@@ -1,24 +1,32 @@
-import 'dotenv/config';
-import { ChatOpenAI } from '@langchain/openai';
-import { HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
-import { executeCommandTool, listDirectoryTool, readFileTool, writeFileTool } from './all-tools.mjs';
-import chalk from 'chalk';
+import "dotenv/config";
+import { ChatOpenAI } from "@langchain/openai";
+import {
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import {
+  executeCommandTool,
+  listDirectoryTool,
+  readFileTool,
+  writeFileTool,
+} from "./all-tools.mjs";
+import chalk from "chalk";
 
-const model = new ChatOpenAI({ 
-    modelName: "qwen3.7-max-preview",
-    apiKey: process.env.OPENAI_API_KEY,
-    temperature: 0,
-    configuration: {
-        baseURL: process.env.OPENAI_BASE_URL,
-    },
+const model = new ChatOpenAI({
+  modelName: "qwen3.7-max-preview",
+  apiKey: process.env.OPENAI_API_KEY,
+  temperature: 0,
+  configuration: {
+    baseURL: process.env.OPENAI_BASE_URL,
+  },
 });
 
-
 const tools = [
-    readFileTool,
-    writeFileTool,
-    executeCommandTool,
-    listDirectoryTool,
+  readFileTool,
+  writeFileTool,
+  executeCommandTool,
+  listDirectoryTool,
 ];
 
 // 绑定工具到模型
@@ -26,8 +34,8 @@ const modelWithTools = model.bindTools(tools);
 
 // Agent 执行函数
 async function runAgentWithTools(query, maxIterations = 30) {
-    const messages = [
-        new SystemMessage(`你是一个项目管理助手，使用工具完成任务。
+  const messages = [
+    new SystemMessage(`你是一个项目管理助手，使用工具完成任务。
 
 当前工作目录: ${process.cwd()}
 
@@ -48,34 +56,36 @@ async function runAgentWithTools(query, maxIterations = 30) {
 重要规则 - write_file：
 - 当写入 React 组件文件（如 App.tsx）时，如果存在对应的 CSS 文件（如 App.css），在其他 import 语句后加上这个 css 的导入
 `),
-        new HumanMessage(query)
-    ];
+    new HumanMessage(query),
+  ];
 
-    for (let i = 0; i < maxIterations; i++) {
-        console.log(chalk.bgGreen(`⏳ 正在等待 AI 思考...`));
-        const response = await modelWithTools.invoke(messages);
-        messages.push(response);
+  for (let i = 0; i < maxIterations; i++) {
+    console.log(chalk.bgGreen(`⏳ 正在等待 AI 思考...`));
+    const response = await modelWithTools.invoke(messages);
+    messages.push(response);
 
-        // 检查是否有工具调用
-        if (!response.tool_calls || response.tool_calls.length === 0) {
-            console.log(`\n✨ AI 最终回复:\n${response.content}\n`);
-            return response.content;
-        }
-
-        // 执行工具调用
-        for (const toolCall of response.tool_calls) {
-            const foundTool = tools.find(t => t.name === toolCall.name);
-            if (foundTool) {
-                const toolResult = await foundTool.invoke(toolCall.args);
-                messages.push(new ToolMessage({
-                    content: toolResult,
-                    tool_call_id: toolCall.id,
-                }));
-            }
-        }
+    // 检查是否有工具调用
+    if (!response.tool_calls || response.tool_calls.length === 0) {
+      console.log(`\n✨ AI 最终回复:\n${response.content}\n`);
+      return response.content;
     }
 
-    return messages[messages.length - 1].content;
+    // 执行工具调用
+    for (const toolCall of response.tool_calls) {
+      const foundTool = tools.find((t) => t.name === toolCall.name);
+      if (foundTool) {
+        const toolResult = await foundTool.invoke(toolCall.args);
+        messages.push(
+          new ToolMessage({
+            content: toolResult,
+            tool_call_id: toolCall.id,
+          }),
+        );
+      }
+    }
+  }
+
+  return messages[messages.length - 1].content;
 }
 
 // echo 在 windows 可能不支持，可以去掉 echo 试试，不一定需要用户选择，或者换成 windows 的命令写法
