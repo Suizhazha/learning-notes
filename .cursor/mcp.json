@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "my-mcp-server": {
+      "command": "node",
+      "args": ["/Users/suizhazha/Desktop/self-learning-agent/tool-test/src/my-mcp-server.mjs"],
+      "env": {}
+    }
+  }
+}
