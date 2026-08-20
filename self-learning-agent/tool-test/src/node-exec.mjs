@@ -1,4 +1,4 @@
-import { spawn } from'node:child_process';
+import { spawn } from'node:child_process'; // spawn 执行命令
 // const command = 'ls -la';
 
 const command = 'echo -e "n\nn" | pnpm create vite react-todo-app --template react-ts';
