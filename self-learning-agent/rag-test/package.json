@@ -1,0 +1,27 @@
+{
+  "name": "rag-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.23.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@11.23.0",
+  "type": "module",
+  "dependencies": {
+    "@langchain/classic": "^1.0.45",
+    "@langchain/core": "^1.2.9",
+    "@langchain/openai": "^1.5.10",
+    "dotenv": "^17.4.2"
+  }
+}

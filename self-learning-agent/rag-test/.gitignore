@@ -1,0 +1,13 @@
+# Ignore .env files
+.env
+
+# Ignore node_modules directory
+node_modules/
+
+# Ignore IDE-specific files and directories
+.idea/
+.prettier.xml
+.iml
+
+# Ignore package lock files
+pnpm-lock.yaml
