@@ -26,6 +26,7 @@
     "@langchain/textsplitters": "^1.0.1",
     "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
+    "js-tiktoken": "^1.0.21",
     "puppeteer": "^25.9.0"
   }
 }
