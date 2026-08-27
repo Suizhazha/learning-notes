@@ -10,7 +10,7 @@ const model = new ChatOpenAI({
   configuration: {
     baseURL: process.env.OPENAI_BASE_URL,
   },
-});s
+});
 
 const embeddings = new OpenAIEmbeddings({
   apiKey: process.env.OPENAI_API_KEY,
