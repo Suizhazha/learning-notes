@@ -1,6 +1,6 @@
 import "dotenv/config";
 import "cheerio";
-import { CheerioWebBaseLoader } from "@langchain/community/document_loaders/web/cheerio";
+import { Pupp } from "@langchain/community/document_loaders/web/cheerio";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 
 const cheerioLoader = new CheerioWebBaseLoader(
