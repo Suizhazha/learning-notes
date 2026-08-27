@@ -25,7 +25,7 @@ const embeddings = new OpenAIEmbeddings({
 const cheerioLoader = new CheerioWebBaseLoader(
     "https://juejin.cn/post/7233327509919547452",
     {
-        selector: '.main-area p'
+        selector: '.article-content'
     }
 );
 
