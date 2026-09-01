@@ -1,0 +1,371 @@
+{
+  "meta": {
+    "project": "milvus-test",
+    "chapter": "insert.mjs + query.mjs + rag.mjs 章节 → Milvus 完整 CRUD 全景 + RAG 闭环",
+    "schema_version": 1,
+    "generated_by": "manual",
+    "updated_at": "2026-09-01",
+    "description": "本图谱以 insert.mjs（建表/灌库）+ query.mjs（向量检索）+ rag.mjs（RAG 检索增强生成闭环）为锚点，覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理。后续新增 src/*.mjs 时只需在本 JSON 中加节点/边，并在 graph.md 中同步。"
+  },
+  "nodes": [
+    {
+      "id": "concept.collection",
+      "label": "集合 Collection",
+      "category": "concept",
+      "summary": "Milvus 中等价于关系数据库表的概念；由字段定义（schema）+ 索引 + 加载状态共同组成。集合创建后字段可扩展但不可删除。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "60-87",
+      "api": "client.createCollection({ collection_name, fields })"
+    },
+    {
+      "id": "concept.field",
+      "label": "字段 Field",
+      "category": "concept",
+      "summary": "集合的列；常见类型 VarChar / Int64 / Float / Bool / Array / FloatVector / SparseFloatVector / BinaryVector。其中 FloatVector / SparseFloatVector / BinaryVector 是向量字段，必须建索引。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "67-73",
+      "api": "fields: [{ name, data_type, ... }]"
+    },
+    {
+      "id": "concept.schema",
+      "label": "字段定义 Schema",
+      "category": "concept",
+      "summary": "字段列表的统称，决定一行数据的形状：包含主键（is_primary_key）、向量维度（dim）、字符串最大长度（max_length）、数组容量（max_capacity）等。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "67-73",
+      "api": "fields 数组"
+    },
+    {
+      "id": "concept.primary_key",
+      "label": "主键",
+      "category": "concept",
+      "summary": "唯一标识一行记录的字段，必须设置 is_primary_key: true；支持 Int64（auto-id）和 VarChar（业务侧生成）。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "67",
+      "api": "{ name: 'id', is_primary_key: true }"
+    },
+    {
+      "id": "concept.index",
+      "label": "索引 Index",
+      "category": "concept",
+      "summary": "为向量字段建立的近似最近邻（ANN）索引；决定 search 时的召回率与延迟。索引类型有 IVF_FLAT / IVF_PQ / IVF_SQ8 / HNSW / ANNOY / DISKANN 等。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "93-99",
+      "api": "client.createIndex({ field_name, index_type, metric_type, params })"
+    },
+    {
+      "id": "concept.metric",
+      "label": "度量方式 MetricType",
+      "category": "concept",
+      "summary": "向量距离度量。常见：COSINE（余弦相似度，语义检索首选）、L2（欧氏距离）、IP（内积）。索引与搜索必须使用相同的 metric_type。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "97",
+      "api": "MetricType.COSINE / L2 / IP"
+    },
+    {
+      "id": "concept.embedding",
+      "label": "Embedding 嵌入向量",
+      "category": "concept",
+      "summary": "由深度模型把文本/图像/音频转成的定长浮点向量；语义相似的输入产生距离更近的向量，是 RAG / 检索 / 推荐的基础。",
+      "impl_file": "src/query.mjs",
+      "impl_lines": "8-15, 21-24, 37",
+      "api": "embeddings.embedQuery(text)"
+    },
+    {
+      "id": "concept.partition",
+      "label": "分区 Partition",
+      "category": "concept",
+      "summary": "集合内部的子划分，类似分区表；可把数据按时间/类别切片，搜索时只扫指定分区以加速。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.createPartition({ partition_name })"
+    },
+    {
+      "id": "concept.alias",
+      "label": "别名 Alias",
+      "category": "concept",
+      "summary": "给集合起一个或多个逻辑名，便于版本切换 / 灰度；可指向不同集合，调用方无需感知。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.createAlias({ alias_name, collection_name })"
+    },
+
+    {
+      "id": "concept.rag",
+      "label": "RAG 检索增强生成",
+      "category": "concept",
+      "summary": "Retrieval-Augmented Generation：先用检索拿到相关上下文，再交给 LLM 生成答案。让 LLM 访问其训练数据之外的知识（这里是用户的日记），同时通过“在文中找不到就告知”降低幻觉。",
+      "impl_file": "src/rag.mjs",
+      "impl_lines": "1-31",
+      "api": "retrieve() + augment() + generate()"
+    },
+    {
+      "id": "concept.prompt",
+      "label": "Prompt 提示词",
+      "category": "concept",
+      "summary": "拼装 LLM 输入的字符串模板：角色设定 + 检索到的 context + 用户问题 + 输出约束。在 RAG 中是“增强”阶段的产物，直接决定 LLM 回答质量与可控性。",
+      "impl_file": "src/rag.mjs",
+      "impl_lines": "104-118",
+      "api": "`role + context + question + constraints`"
+    },
+    {
+      "id": "concept.llm",
+      "label": "LLM 大语言模型",
+      "category": "concept",
+      "summary": "生成式语言模型。本项目用 ChatOpenAI（gpt-* 兼容协议）。temperature 越高越发散；问答类推荐 0.3~0.7。",
+      "impl_file": "src/rag.mjs",
+      "impl_lines": "9-16, 122",
+      "api": "model.invoke(prompt) → response.content"
+    },
+    {
+      "id": "concept.context",
+      "label": "Context 上下文",
+      "category": "concept",
+      "summary": "从检索结果拼出的结构化文本，喂给 LLM 的“外部知识”。一般用分隔符（[日记 N] / ━━━━━）明示边界，避免 LLM 跨条混淆。",
+      "impl_file": "src/rag.mjs",
+      "impl_lines": "93-101",
+      "api": "items.map(...).join('\\n\\n━━━━━\\n\\n')"
+    },
+
+    {
+      "id": "param.vector_dim",
+      "label": "VECTOR_DIM",
+      "category": "param",
+      "summary": "向量维度。schema 的 dim、Embedding 模型的 dimensions、实际生成的向量长度三者必须完全一致。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "31",
+      "api": "const VECTOR_DIM = 1024"
+    },
+    {
+      "id": "param.ivf_flat",
+      "label": "IVF_FLAT 索引参数",
+      "category": "param",
+      "summary": "nlist：倒排聚类中心数；经验值 ≈ sqrt(N) ~ 4*sqrt(N)。越小检索越快但召回下降，越大越精确但慢。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "98",
+      "api": "{ nlist: 1024 }"
+    },
+
+    {
+      "id": "step.connect",
+      "label": "连接 Connect",
+      "category": "step",
+      "summary": "创建 MilvusClient 后等待 SDK 内部握手完成（await connectPromise），保证后续 RPC 不会因未连接失败。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "55-57",
+      "api": "await client.connectPromise"
+    },
+    {
+      "id": "step.create_collection",
+      "label": "创建集合",
+      "category": "step",
+      "summary": "定义字段列表，建表。所有后续操作都依赖该集合存在；同名集合再调用会抛已存在错误。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "63-75",
+      "api": "client.createCollection({ collection_name, fields })"
+    },
+    {
+      "id": "step.create_index",
+      "label": "创建索引",
+      "category": "step",
+      "summary": "为某个向量字段建立 ANN 索引。无索引只能暴力搜索（极慢）；建索引后集合仍可写入，但 search 会等到索引构建完成。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "92-100",
+      "api": "client.createIndex({ field_name, index_type, metric_type, params })"
+    },
+    {
+      "id": "step.load_collection",
+      "label": "加载集合",
+      "category": "step",
+      "summary": "把集合从磁盘加载到 QueryNode 内存中，加载后 search / query 才能用；插入本身不要求加载。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "105-106",
+      "api": "client.loadCollection({ collection_name })"
+    },
+    {
+      "id": "step.insert",
+      "label": "插入数据",
+      "category": "step",
+      "summary": "把一行行数据写入集合；返回 insert_cnt 表示写入条数。data 数组中每条对象字段名须对齐 schema。",
+      "impl_file": "src/insert.mjs",
+      "impl_lines": "196-200",
+      "api": "client.insert({ collection_name, data })"
+    },
+    {
+      "id": "step.upsert",
+      "label": "Upsert 插入或更新",
+      "category": "step",
+      "summary": "若主键已存在则覆盖，否则插入。适合做增量同步；性能比 insert 略低。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.upsert({ collection_name, data })"
+    },
+    {
+      "id": "step.query",
+      "label": "标量查询 Query",
+      "category": "step",
+      "summary": "基于标量字段的精确过滤查询（如 date='2026-01-10'），需要集合已加载。返回指定 output_fields。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.query({ collection_name, filter, output_fields })"
+    },
+    {
+      "id": "step.search",
+      "label": "向量检索 Search",
+      "category": "step",
+      "summary": "在向量字段上做 ANN 检索；输入查询向量，返回 TopK 个最相似的 id 及相似度。需要集合已加载且索引就绪。",
+      "impl_file": "src/query.mjs",
+      "impl_lines": "1-15, 21-24, 37-44, 47-54",
+      "api": "client.search({ collection_name, vector | data: [vec], limit, metric_type, output_fields })"
+    },
+    {
+      "id": "step.hybrid_search",
+      "label": "混合检索 Hybrid Search",
+      "category": "step",
+      "summary": "把多个向量字段的检索结果按权重融合（RRFRanker / WeightedRanker），常用于多模态 / 多向量召回。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.hybridSearch({ collection_name, search_params: [...], rerank: { strategy, params } })"
+    },
+    {
+      "id": "step.get",
+      "label": "按主键取 Get",
+      "category": "step",
+      "summary": "根据主键列表直接拉取整行；用于把 search 返回的 id 还原成完整记录。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.get({ collection_name, ids })"
+    },
+    {
+      "id": "step.delete",
+      "label": "删除数据",
+      "category": "step",
+      "summary": "按主键或 filter 删除行；删除后立即在 search 中不可见，但底层 segment 合并前可能仍占空间。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.delete({ collection_name, filter })"
+    },
+    {
+      "id": "step.flush",
+      "label": "刷盘 Flush",
+      "category": "step",
+      "summary": "把内存中的 segment 落盘 + 建立索引段，保证数据可恢复；通常在小数据量灌库后调一次确认可见。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.flush({ collection_names })"
+    },
+    {
+      "id": "step.create_partition",
+      "label": "创建分区",
+      "category": "step",
+      "summary": "在集合内建一个分区，写入时可指定 partition_name；search 时只扫指定分区可显著加速。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.createPartition({ collection_name, partition_name })"
+    },
+    {
+      "id": "step.create_alias",
+      "label": "创建别名",
+      "category": "step",
+      "summary": "给集合起别名；调用方查别名即可。后续切换集合不影响调用方。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.createAlias({ collection_name, alias })"
+    },
+    {
+      "id": "step.release_collection",
+      "label": "释放集合",
+      "category": "step",
+      "summary": "把集合从内存中卸载，释放 QueryNode 资源；需要时可再次 loadCollection。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.releaseCollection({ collection_name })"
+    },
+    {
+      "id": "step.drop_collection",
+      "label": "删除集合",
+      "category": "step",
+      "summary": "彻底删除集合及其所有数据、分区、别名；不可恢复，需谨慎。",
+      "impl_file": null,
+      "impl_lines": null,
+      "api": "client.dropCollection({ collection_name })"
+    },
+
+    {
+      "id": "step.retrieve",
+      "label": "检索 Retrieve",
+      "category": "step",
+      "summary": "RAG 第一步：把用户问题 Embedding 后在 Milvus 中检索 TopK 条相关文档，返回原始命中文本。",
+      "impl_file": "src/rag.mjs",
+      "impl_lines": "44-63",
+      "api": "retrieveRelevantDiaries(question, k)"
+    },
+    {
+      "id": "step.augment",
+      "label": "增强 Augment",
+      "category": "step",
+      "summary": "RAG 第二步：把检索结果拼成结构化 context，再组装成带角色/约束的 Prompt 模板。",
+      "impl_file": "src/rag.mjs",
+      "impl_lines": "93-118",
+      "api": "context = items.map(...).join(...); prompt = role + context + question"
+    },
+    {
+      "id": "step.generate",
+      "label": "生成 Generate",
+      "category": "step",
+      "summary": "RAG 第三步：调用 LLM（ChatOpenAI）基于 Prompt 生成最终回答；输出 response.content。",
+      "impl_file": "src/rag.mjs",
+      "impl_lines": "120-126",
+      "api": "model.invoke(prompt) → response.content"
+    }
+  ],
+  "edges": [
+    { "from": "step.connect", "to": "step.create_collection", "relation": "前置", "note": "必须先连接才能建集合" },
+    { "from": "step.create_collection", "to": "step.create_index", "relation": "前置", "note": "字段定义存在后才能给 vector 建索引" },
+    { "from": "step.create_collection", "to": "step.load_collection", "relation": "前置", "note": "集合必须存在才能加载" },
+    { "from": "step.create_index", "to": "step.load_collection", "relation": "无依赖", "note": "索引与加载互不阻塞，但通常一起做" },
+    { "from": "step.load_collection", "to": "step.insert", "relation": "无依赖", "note": "插入不需要加载，但脚本顺序中排在加载之后" },
+
+    { "from": "step.insert", "to": "step.upsert", "relation": "对照", "note": "upsert = insert + 按主键覆盖" },
+    { "from": "step.search", "to": "step.hybrid_search", "relation": "对照", "note": "hybrid_search 是多个 search + rerank 的组合" },
+    { "from": "step.search", "to": "step.get", "relation": "后置", "note": "search 返回 id 后用 get 拉回完整记录" },
+
+    { "from": "concept.collection", "to": "concept.field", "relation": "依赖", "note": "集合由一组字段组成" },
+    { "from": "concept.collection", "to": "concept.index", "relation": "依赖", "note": "集合可挂载索引，但不是必须" },
+    { "from": "concept.collection", "to": "concept.partition", "relation": "依赖", "note": "分区属于集合" },
+    { "from": "concept.collection", "to": "concept.alias", "relation": "依赖", "note": "别名指向集合" },
+    { "from": "concept.field", "to": "concept.schema", "relation": "依赖", "note": "schema = 字段列表" },
+    { "from": "concept.field", "to": "concept.primary_key", "relation": "依赖", "note": "主键是一种特殊的字段" },
+    { "from": "concept.field", "to": "concept.embedding", "relation": "依赖", "note": "向量字段承载 Embedding 结果" },
+    { "from": "concept.index", "to": "concept.metric", "relation": "依赖", "note": "索引必须指定度量方式" },
+
+    { "from": "param.vector_dim", "to": "concept.embedding", "relation": "依赖", "note": "Embedding 输出维度 = VECTOR_DIM" },
+    { "from": "param.vector_dim", "to": "concept.field", "relation": "依赖", "note": "FloatVector.dim = VECTOR_DIM" },
+    { "from": "param.ivf_flat", "to": "concept.index", "relation": "依赖", "note": "nlist 是 IVF_FLAT 索引的参数" },
+    { "from": "param.ivf_flat", "to": "concept.metric", "relation": "依赖", "note": "IVF_FLAT 通常配合 COSINE 或 L2" },
+
+    { "from": "step.search", "to": "step.load_collection", "relation": "前置", "note": "集合必须已加载才能 search" },
+    { "from": "step.search", "to": "concept.embedding", "relation": "依赖", "note": "search 前必须先把查询文本 Embedding 成向量" },
+    { "from": "step.search", "to": "concept.metric", "relation": "依赖", "note": "search 的 metric_type 必须与索引一致" },
+    { "from": "step.search", "to": "step.query", "relation": "对照", "note": "文件命名差异：query.mjs 实际演示的是 search；SDK 中 search=ANN, query=标量过滤" },
+    { "from": "step.query", "to": "step.load_collection", "relation": "前置", "note": "集合必须已加载才能 query" },
+    { "from": "step.delete", "to": "step.flush", "relation": "无依赖", "note": "删除后通常 flush 让刷盘更彻底" },
+    { "from": "step.release_collection", "to": "step.load_collection", "relation": "对照", "note": "释放与加载是一对反向操作" },
+    { "from": "step.drop_collection", "to": "step.release_collection", "relation": "前置", "note": "删除前建议先释放" },
+    { "from": "step.create_partition", "to": "step.insert", "relation": "前置", "note": "建好分区才能在写入时指定它" },
+    { "from": "step.create_alias", "to": "step.create_collection", "relation": "前置", "note": "别名指向已存在的集合" },
+
+    { "from": "step.retrieve", "to": "step.search", "relation": "依赖", "note": "RAG 的检索复用 client.search，只是换了层封装" },
+    { "from": "step.retrieve", "to": "concept.embedding", "relation": "依赖", "note": "检索前需把问题 Embedding 成向量" },
+    { "from": "step.augment", "to": "step.retrieve", "relation": "前置", "note": "必须先有检索结果才能拼 context" },
+    { "from": "step.augment", "to": "concept.context", "relation": "依赖", "note": "context 是 augment 的核心产物" },
+    { "from": "step.augment", "to": "concept.prompt", "relation": "依赖", "note": "prompt 是 augment 的最终输出" },
+    { "from": "step.generate", "to": "step.augment", "relation": "前置", "note": "LLM 需要 prompt 才能生成" },
+    { "from": "step.generate", "to": "concept.llm", "relation": "依赖", "note": "generate 调用 LLM" },
+    { "from": "concept.rag", "to": "step.retrieve", "relation": "依赖", "note": "R = Retrieve" },
+    { "from": "concept.rag", "to": "step.augment", "relation": "依赖", "note": "A = Augment" },
+    { "from": "concept.rag", "to": "step.generate", "relation": "依赖", "note": "G = Generate" },
+    { "from": "concept.context", "to": "step.retrieve", "relation": "依赖", "note": "context 由检索结果组装" },
+    { "from": "concept.prompt", "to": "concept.context", "relation": "依赖", "note": "prompt 内嵌 context" }
+  ]
+}
