@@ -1,11 +1,11 @@
 {
   "meta": {
     "project": "milvus-test",
-    "chapter": "insert.mjs + query.mjs + rag.mjs 章节 → Milvus 完整 CRUD 全景 + RAG 闭环",
+    "chapter": "insert.mjs + query.mjs + rag.mjs + update.mjs + delete.mjs 章节 → Milvus 完整 CRUD 全景 + RAG 闭环",
     "schema_version": 1,
     "generated_by": "manual",
     "updated_at": "2026-09-01",
-    "description": "本图谱以 insert.mjs（建表/灌库）+ query.mjs（向量检索）+ rag.mjs（RAG 检索增强生成闭环）为锚点，覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理。后续新增 src/*.mjs 时只需在本 JSON 中加节点/边，并在 graph.md 中同步。"
+    "description": "本图谱以 insert.mjs（建表/灌库）+ query.mjs（向量检索）+ rag.mjs（RAG 检索增强生成闭环）+ update.mjs（upsert 实现“更新”）+ delete.mjs（三种姿势删除）为锚点，覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理。后续新增 src/*.mjs 时只需在本 JSON 中加节点/边，并在 graph.md 中同步。"
   },
   "nodes": [
     {
@@ -67,8 +67,8 @@
       "label": "Embedding 嵌入向量",
       "category": "concept",
       "summary": "由深度模型把文本/图像/音频转成的定长浮点向量；语义相似的输入产生距离更近的向量，是 RAG / 检索 / 推荐的基础。",
-      "impl_file": "src/query.mjs",
-      "impl_lines": "8-15, 21-24, 37",
+      "impl_file": "src/update.mjs",
+      "impl_lines": "21-23, 33-40, 50-55, 86-94",
       "api": "embeddings.embedQuery(text)"
     },
     {
@@ -116,6 +116,15 @@
       "impl_file": "src/rag.mjs",
       "impl_lines": "9-16, 122",
       "api": "model.invoke(prompt) → response.content"
+    },
+    {
+      "id": "concept.filter_expr",
+      "label": "Filter 表达式",
+      "category": "concept",
+      "summary": "Milvus 的跨字段过滤表达式语法，支持比较（==/!=/>/<）、逻辑（&&/||/!）、in [...]、like。query / delete / search 的过滤参数都用这个语法。",
+      "impl_file": "src/delete.mjs",
+      "impl_lines": "39-53, 59-74, 76-94",
+      "api": "`id == \"x\"` / `id in [\"a\",\"b\"]` / `mood == \"sad\"`"
     },
     {
       "id": "concept.context",
@@ -195,10 +204,10 @@
       "id": "step.upsert",
       "label": "Upsert 插入或更新",
       "category": "step",
-      "summary": "若主键已存在则覆盖，否则插入。适合做增量同步；性能比 insert 略低。",
-      "impl_file": null,
-      "impl_lines": null,
-      "api": "client.upsert({ collection_name, data })"
+      "summary": "若主键已存在则整行覆盖（包含向量），否则插入。Milvus 的“更新”必须借助 upsert。注意：文本更新后必须重新 Embedding，否则向量与文本失配。",
+      "impl_file": "src/update.mjs",
+      "impl_lines": "60-106",
+      "api": "client.upsert({ collection_name, data: [row] })"
     },
     {
       "id": "step.query",
@@ -240,9 +249,9 @@
       "id": "step.delete",
       "label": "删除数据",
       "category": "step",
-      "summary": "按主键或 filter 删除行；删除后立即在 search 中不可见，但底层 segment 合并前可能仍占空间。",
-      "impl_file": null,
-      "impl_lines": null,
+      "summary": "按主键 / `in [list]` / 任意 filter 表达式删除；底层是软删除（写入 delete log），search/query 立即不可见，磁盘空间需靠 flush + segment 合并释放。",
+      "impl_file": "src/delete.mjs",
+      "impl_lines": "39-94",
       "api": "client.delete({ collection_name, filter })"
     },
     {
@@ -326,7 +335,10 @@
     { "from": "step.create_index", "to": "step.load_collection", "relation": "无依赖", "note": "索引与加载互不阻塞，但通常一起做" },
     { "from": "step.load_collection", "to": "step.insert", "relation": "无依赖", "note": "插入不需要加载，但脚本顺序中排在加载之后" },
 
-    { "from": "step.insert", "to": "step.upsert", "relation": "对照", "note": "upsert = insert + 按主键覆盖" },
+    { "from": "step.insert", "to": "step.upsert", "relation": "对照", "note": "upsert = insert + 按主键覆盖；update.mjs 走的就是 upsert" },
+        { "from": "step.upsert", "to": "concept.embedding", "relation": "依赖", "note": "更新文本后必须重新 Embedding，否则向量与新文本失配" },
+        { "from": "step.delete", "to": "concept.filter_expr", "relation": "依赖", "note": "delete 的入参是 filter 表达式" },
+        { "from": "step.query", "to": "concept.filter_expr", "relation": "依赖", "note": "query 的入参也是 filter 表达式" },
     { "from": "step.search", "to": "step.hybrid_search", "relation": "对照", "note": "hybrid_search 是多个 search + rerank 的组合" },
     { "from": "step.search", "to": "step.get", "relation": "后置", "note": "search 返回 id 后用 get 拉回完整记录" },
 

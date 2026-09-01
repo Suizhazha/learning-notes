@@ -3,10 +3,10 @@
 > 单一事实源：`./graph.json`。本文件（Mermaid 图谱 + 节点说明表）严格对齐 JSON；新增节点时请同步两边。
 
 ## 对应章节
-- 锚点脚本：`src/insert.mjs`（建表 / 索引 / 灌库）+ `src/query.mjs`（向量检索）+ `src/rag.mjs`（RAG 检索增强生成闭环）
+- 锚点脚本：`src/insert.mjs`（建表 / 索引 / 灌库）+ `src/query.mjs`（向量检索）+ `src/rag.mjs`（RAG 检索增强生成闭环）+ `src/update.mjs`（upsert 实现“更新”）+ `src/delete.mjs`（三种姿势删除）
 - 范围：Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理
-- 节点总数：34（step: 19 / concept: 13 / param: 2）
-- 边总数：42
+- 节点总数：35（step: 19 / concept: 14 / param: 2）
+- 边总数：45
 
 ## 流程图（CRUD 全景）
 
@@ -21,6 +21,7 @@ flowchart TD
         index["索引 Index"]
         metric["MetricType"]
         embedding["Embedding"]
+        cFilterExpr["concept.filter_expr<br/>Filter 表达式"]
         partition["分区 Partition"]
         alias["别名 Alias"]
         dim["VECTOR_DIM"]
@@ -54,12 +55,12 @@ flowchart TD
 
     %% ============ U: Update ============
     subgraph UPDATE["U — Update"]
-        sUpsert["step.upsert<br/>Upsert"]
+        sUpsert["step.upsert<br/>Upsert<br/><i>src/update.mjs</i>"]
     end
 
     %% ============ D: Delete ============
     subgraph DELETE["D — Delete"]
-        sDelete["step.delete<br/>删除"]
+        sDelete["step.delete<br/>删除<br/><i>src/delete.mjs</i>"]
         sRelease["step.release_collection<br/>释放"]
         sDrop["step.drop_collection<br/>删除集合"]
     end
@@ -96,6 +97,8 @@ flowchart TD
 
     %% ---------- Update / Delete ----------
     sInsert -->|对照| sUpsert
+    sSearch -->|依赖| cFilterExpr
+    sDelete -->|依赖| cFilterExpr
     sDelete -->|无依赖| sFlush
     sRelease -->|对照| sLoad
     sRelease -->|前置| sDrop
@@ -136,7 +139,7 @@ flowchart TD
     classDef param fill:#d6f0d6,stroke:#4a8c4a,color:#1a4a1a;
     classDef rag fill:#f7d6e8,stroke:#a83d7a,color:#5a1a3a;
     class sConnect,sCreateCol,sCreateIdx,sLoad,sInsert,sQuery,sSearch,sHybrid,sGet,sUpsert,sDelete,sRelease,sDrop,sFlush,sCreatePart,sCreateAlias,sRetrieve,sAugment,sGenerate step;
-    class collection,field,schema,pk,index,metric,embedding,partition,alias concept;
+    class collection,field,schema,pk,index,metric,embedding,cFilterExpr,partition,alias concept;
     class dim,nlist param;
     class cRag,cPrompt,cContext,cLlm rag;
 ```
@@ -188,7 +191,8 @@ classDiagram
 | concept.primary_key | 主键 | concept | 唯一标识一行；Int64/VarChar | `src/insert.mjs:67` |
 | concept.index | 索引 | concept | 向量字段的 ANN 索引（IVF_FLAT/HNSW/…） | `src/insert.mjs:93-99` |
 | concept.metric | MetricType | concept | COSINE / L2 / IP；索引与检索必须一致 | `src/insert.mjs:97` |
-| concept.embedding | Embedding | concept | 深度模型产出的定长浮点向量 | `src/query.mjs:8-15, 21-24, 37` |
+| concept.embedding | Embedding | concept | 深度模型产出的定长浮点向量 | `src/update.mjs:21-23, 33-40, 52-55, 86-94` |
+| concept.filter_expr | Filter 表达式 | concept | 跨字段过滤语法；query/delete/search 都用 | `src/delete.mjs:39-53, 59-74, 76-94` |
 | concept.partition | 分区 | concept | 集合内子划分，按切片加速搜索 | — |
 | concept.alias | 别名 | concept | 给集合起逻辑名，便于版本切换 | — |
 | concept.rag | RAG | concept | Retrieve + Augment + Generate 三步闭环 | `src/rag.mjs:1-31` |
@@ -202,12 +206,12 @@ classDiagram
 | step.create_index | 创建索引 | step | `client.createIndex` | `src/insert.mjs:92-100` |
 | step.load_collection | 加载集合 | step | `client.loadCollection` | `src/insert.mjs:105-106` |
 | step.insert | 插入数据 | step | `client.insert` | `src/insert.mjs:196-200` |
-| step.upsert | Upsert | step | 按主键存在则覆盖 | — |
+| step.upsert | Upsert | step | 按主键存在则覆盖；文本更新后必须重新 Embedding | `src/update.mjs:60-106` |
 | step.query | 标量查询 | step | `client.query` + filter | — |
 | step.search | 向量检索 | step | `client.search`，需集合已加载 + Embedding 已就绪 | `src/query.mjs:1-15, 21-24, 37-44, 47-54` |
 | step.hybrid_search | 混合检索 | step | 多向量检索 + rerank | — |
 | step.get | 按主键取 | step | search 返回 id 后回查 | — |
-| step.delete | 删除数据 | step | 按主键 / filter | — |
+| step.delete | 删除数据 | step | 按主键 / filter；底层软删除 | `src/delete.mjs:39-94` |
 | step.flush | 刷盘 | step | 内存 segment 落盘 | — |
 | step.create_partition | 创建分区 | step | 切片写入/查询 | — |
 | step.create_alias | 创建别名 | step | 给集合起逻辑名 | — |
@@ -222,16 +226,22 @@ classDiagram
 | 起点 | 关系 | 终点 | 备注 |
 |------|------|------|------|
 | step.connect | 前置 | step.create_collection | 必须先连接才能建集合 |
+| step.create_index | 无依赖 | step.load_collection | 索引与加载互不阻塞，但通常一起做 |
+| step.load_collection | 无依赖 | step.insert | 插入不需要加载，但脚本顺序中排在加载之后 |
 | step.create_collection | 前置 | step.create_index | 字段定义存在后才能建索引 |
 | step.create_collection | 前置 | step.load_collection | 集合存在才能加载 |
 | step.search | 前置 | step.load_collection | 集合已加载才能 search |
 | step.search | 依赖 | concept.embedding | search 前需把文本 Embedding 成向量 |
 | step.search | 依赖 | concept.metric | 检索 metric_type 须与索引一致 |
 | step.search | 对照 | step.query | 文件命名差异：query.mjs 实际是 search；SDK 中 search=ANN, query=标量过滤 |
+| step.query | 依赖 | concept.filter_expr | query 的入参也是 filter 表达式 |
+| step.delete | 依赖 | concept.filter_expr | delete 的入参是 filter 表达式 |
+| step.delete | 无依赖 | step.flush | 删除后通常 flush 让刷盘更彻底 |
 | step.query | 前置 | step.load_collection | 集合已加载才能 query |
 | step.search | 后置 | step.get | search 拿 id，get 拉完整记录 |
 | step.search | 对照 | step.hybrid_search | hybrid 是多个 search + rerank |
 | step.insert | 对照 | step.upsert | upsert = insert + 主键覆盖 |
+| step.upsert | 依赖 | concept.embedding | 更新文本后必须重新 Embedding，否则向量与新文本失配 |
 | step.release_collection | 对照 | step.load_collection | 释放/加载是一对反向操作 |
 | step.drop_collection | 前置 | step.release_collection | 删除前建议先释放 |
 | step.create_partition | 前置 | step.insert | 建好分区才能写入时指定 |

@@ -1,6 +1,6 @@
 # milvus-test 知识图谱
 
-存放本项目学习过程中沉淀的**Milvus 知识图谱**。当前锚点章节是 `src/insert.mjs`（建表 / 索引 / 灌库）+ `src/query.mjs`（向量检索）+ `src/rag.mjs`（RAG 检索增强生成闭环），整套图谱覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理。
+存放本项目学习过程中沉淀的**Milvus 知识图谱**。当前锚点章节是 `src/insert.mjs`（建表 / 索引 / 灌库）+ `src/query.mjs`（向量检索）+ `src/rag.mjs`（RAG 检索增强生成闭环）+ `src/update.mjs`（upsert 实现“更新”）+ `src/delete.mjs`（三种姿势删除），整套图谱覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理。
 
 > ⚠️ **文件名与语义对齐提示**：`src/query.mjs` 文件名是中文语境里的“查日记”，但它演示的其实是 `client.search`（向量检索 / ANN），不是 `client.query`（标量过滤查询）。知识图谱中 `step.search` 才是本文件对应的节点。
 
@@ -108,13 +108,15 @@
   - `src/insert.mjs`：connect / createCollection / createIndex / loadCollection / insert
   - `src/query.mjs`：client.search（向量检索 / ANN）
   - `src/rag.mjs`：完整 retrieve → augment → generate 闭环
+  - `src/update.mjs`：upsert（主键覆盖即“更新”）
+  - `src/delete.mjs`：三种姿势：按主键 / 批量 in [...] / filter 表达式
 - **C（Create）**: connect / create_collection / create_index / load_collection / insert / upsert
 - **R（Read）**: query / search / hybrid_search / get
 - **U（Update）**: upsert / alter_collection（暂未单列，归到 upsert 旁注）
 - **D（Delete）**: delete / release_collection / drop_collection
 - **辅助**: flush / create_partition / create_alias
 - **RAG 闭环**: retrieve / augment / generate
-- **概念**: Collection / Field / Schema / PrimaryKey / Index / MetricType / Embedding / Partition / Alias / RAG / Prompt / Context / LLM
+- **概念**: Collection / Field / Schema / PrimaryKey / Index / MetricType / Embedding / Filter / Partition / Alias / RAG / Prompt / Context / LLM
 - **参数**: VECTOR_DIM / IVF_FLAT.nlist
 
 如需扩到更多内容（例如用户管理 / 角色 RBAC / 多副本 / 跨集群同步、向量召回评估、流式回答 / 多轮对话 / Agent 工具调用），按上述流程补充节点即可。
