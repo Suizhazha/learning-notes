@@ -309,6 +309,20 @@ classDiagram
 | concept.rag | 依赖 | step.generate | G = Generate |
 | concept.context | 依赖 | step.retrieve | context 由检索结果组装 |
 | concept.prompt | 依赖 | concept.context | prompt 内嵌 context |
+| step.load_epub | 前置 | step.split_text | 先有按章节 Document 才能二次切 chunk |
+| step.split_text | 前置 | step.streaming_insert | chunks 生成后才能逐章插入 |
+| step.streaming_insert | 依赖 | concept.embedding | 每个 chunk 都要走 Embedding 才能入库 |
+| step.streaming_insert | 依赖 | step.insert | 流式灌库底层仍是 client.insert |
+| step.streaming_insert | 依赖 | concept.streaming | 流式处理是该步骤的核心设计 |
+| concept.streaming | 依赖 | concept.chunk | 流式处理以 chunk 为单位推进 |
+| concept.chunk | 依赖 | concept.text_splitter | chunk 是 text_splitter 的产物 |
+| concept.chunk | 依赖 | concept.embedding | 每个 chunk 都生成一条 Embedding 向量 |
+| concept.epub_loader | 依赖 | step.load_epub | EPubLoader 是 load_epub 的实现 |
+| concept.text_splitter | 依赖 | step.split_text | TextSplitter 是 split_text 的实现 |
+| step.load_epub | 依赖 | concept.streaming | EPubLoader 按章节返回，是流式处理起点 |
+| param.chunk_size | 依赖 | concept.text_splitter | chunkSize 控制单 chunk 长度 |
+| param.chunk_overlap | 依赖 | concept.text_splitter | chunkOverlap 控制相邻 chunk 重叠 |
+| param.chunk_size | 对照 | param.chunk_overlap | overlap 通常取 chunkSize 的 10%~20% |
 
 ## 维护说明
 详见 [`README.md`](./README.md)。修改任何节点 / 边时请先改 `graph.json`，再同步本文件中的 Mermaid 块与说明表。
