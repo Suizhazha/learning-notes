@@ -1,33 +1,49 @@
-name: Sync 当前分支 → master
+name: Sync 当前分支 → 主分支
 
 # ============================================================
-# 触发条件：当前分支（learn-rag 或任意非 master 分支）被 push 时触发
+# 触发条件：监听所有非默认分支的 push 事件
+# 兼容主分支名为 main 或 master 的仓库
+# 注：YAML 触发器不支持变量展开，这里同时排除两种最常见的命名，
+#     并在 job 入口处再用 env 中的 DEFAULT_BRANCH 做二次校验，
+#     避免 main/master 之外的同名分支误触发
 # ============================================================
 on:
   push:
     branches-ignore:
-      - master
       - main
+      - master
 
 # ============================================================
-# 权限：使用 GITHUB_TOKEN 推送回 master 必须明确授予 write 权限
+# 权限：必须授予 write 权限以推送回主分支
 # ============================================================
 permissions:
   contents: write
   pull-requests: read
 
 # ============================================================
-# 防止并发：同一时间只允许一个同步任务执行，避免并发写入 master
+# 防止并发：同一时间只允许一个同步任务执行，避免并发写入主分支
 # ============================================================
 concurrency:
-  group: sync-to-master
+  group: sync-to-default-branch
   cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    # 仅在私有仓库或需要 fork PR 时限制分支策略；公开仓库可省略
+
+    # 二次过滤：仅当 push 的分支不是默认分支、且不是 Bot 推送时才执行
+    # DEFAULT_BRANCH 在第一个 step 中设置到 env，需在此提前占位
+    # 实际判断在 "Check default branch" step 完成前的 job-level 简化判断：
+    #   - 排除 Bot 触发（避免循环）
     if: github.event.pusher.type != 'Bot'
+
+    # ------------------------------------------------------------
+    # 关键环境变量：所有 step 共用
+    # DEFAULT_BRANCH 由 API 动态探测，覆盖 main / master / 自定义命名
+    # ------------------------------------------------------------
+    env:
+      SOURCE_BRANCH: ${{ github.ref_name }}
+      DEFAULT_BRANCH: ${{ steps.detect-default.outputs.branch }}
 
     steps:
       # ----------------------------------------------------------
@@ -38,7 +54,58 @@ jobs:
         run: echo "GitHub auto-merge handled manually below"
 
       # ----------------------------------------------------------
-      # 1. 检出仓库（使用 fetch-depth: 0 拿到完整历史，merge 需要）
+      # 1. 动态探测仓库的默认分支（main / master / 其他）
+      #    优先使用 GitHub API（最权威），失败后回退到本地 ref
+      # ----------------------------------------------------------
+      - name: Detect default branch
+        id: detect-default
+        run: |
+          set -euo pipefail
+
+          # 1.1 优先通过 GitHub REST API 获取仓库默认分支
+          DEFAULT_BRANCH=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "${{ github.api_url }}/repos/${{ github.repository }}" \
+            | jq -r '.default_branch // empty')
+
+          # 1.2 API 失败时回退：解析 origin/HEAD 符号引用
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            echo "API 探测失败，回退到 git symbolic-ref"
+            git remote set-head origin --auto >/dev/null 2>&1 || true
+            DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+              | sed 's@^refs/remotes/origin/@@')
+          fi
+
+          # 1.3 兜底：依次尝试 master / main（兼容历史仓库）
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            if git ls-remote --heads origin master | grep -q master; then
+              DEFAULT_BRANCH="master"
+            elif git ls-remote --heads origin main | grep -q main; then
+              DEFAULT_BRANCH="main"
+            else
+              echo "::error::无法确定默认分支，请检查仓库配置"
+              exit 1
+            fi
+          fi
+
+          echo "✅ 检测到默认分支: $DEFAULT_BRANCH"
+          echo "branch=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+
+      # ----------------------------------------------------------
+      # 2. 校验：源分支不能等于默认分支（防止循环触发）
+      # ----------------------------------------------------------
+      - name: Validate source != default
+        run: |
+          set -euo pipefail
+          if [ "$SOURCE_BRANCH" = "$DEFAULT_BRANCH" ]; then
+            echo "::error:: 源分支 ($SOURCE_BRANCH) 不能等于默认分支 ($DEFAULT_BRANCH)"
+            exit 1
+          fi
+          echo "源分支: $SOURCE_BRANCH → 默认分支: $DEFAULT_BRANCH"
+
+      # ----------------------------------------------------------
+      # 3. 检出仓库（使用 fetch-depth: 0 拿到完整历史，merge 需要）
       # ----------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,7 +114,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # ----------------------------------------------------------
-      # 2. 配置 Git 用户（commit 需要身份）
+      # 4. 配置 Git 用户（commit 需要身份）
       # ----------------------------------------------------------
       - name: Configure git
         run: |
@@ -55,32 +122,33 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       # ----------------------------------------------------------
-      # 3. 预检：差异审查 + 冲突预演（关键安全步骤）
-      #    - 若 master 比当前分支领先超过 N 个提交，警告人工
-      #    - 若存在冲突，输出冲突文件列表并失败退出
+      # 5. 预检：差异审查 + 冲突预演（关键安全步骤）
+      #    - 列出源分支相对于默认分支的所有提交
+      #    - 用临时分支模拟 merge，发现冲突立即失败
       # ----------------------------------------------------------
       - name: Pre-check diff and conflict
         id: precheck
         run: |
           set -euo pipefail
-          SOURCE_BRANCH="${{ github.ref_name }}"
-          echo "源分支: $SOURCE_BRANCH"
+          echo "源分支: $SOURCE_BRANCH  →  默认分支: $DEFAULT_BRANCH"
 
-          # 3.1 获取 origin/master 与 origin/<source> 最新提交
-          git fetch origin master --depth=1
+          # 5.1 拉取默认分支与源分支最新代码
+          git fetch origin "$DEFAULT_BRANCH" --depth=1
           git fetch origin "$SOURCE_BRANCH" --depth=1
 
-          # 3.2 展示当前分支独有的提交（diff: master..HEAD）
+          # 5.2 展示源分支独有的提交（diff: default..source）
           echo "===== 待同步的提交列表 ====="
-          git log --oneline origin/master..origin/"$SOURCE_BRANCH" || true
+          git log --oneline "origin/$DEFAULT_BRANCH..origin/$SOURCE_BRANCH" || true
 
-          # 3.3 冲突预演：用一个临时分支模拟 merge
+          # 5.3 冲突预演：用一个临时分支模拟 merge
           PRECHECK_BRANCH="precheck/$SOURCE_BRANCH-$(date +%s)"
-          git checkout -b "$PRECHECK_BRANCH" origin/master
+          git checkout -b "$PRECHECK_BRANCH" "origin/$DEFAULT_BRANCH"
           if git merge --no-commit --no-ff "origin/$SOURCE_BRANCH" 2>/tmp/merge.err; then
             echo "✅ 无冲突，可自动合并"
             # 取消暂存（pre-check 不真正提交）
             git merge --abort || true
+            git checkout "$DEFAULT_BRANCH" 2>/dev/null || git checkout -
+            git branch -D "$PRECHECK_BRANCH" >/dev/null 2>&1 || true
           else
             echo "❌ 检测到合并冲突，需要人工介入"
             echo "冲突文件："
@@ -90,29 +158,31 @@ jobs:
           fi
 
       # ----------------------------------------------------------
-      # 4. 执行合并：将源分支合入 master（使用 --no-ff 保留合并轨迹）
+      # 6. 执行合并：将源分支合入默认分支（--no-ff 保留合并轨迹）
       # ----------------------------------------------------------
-      - name: Merge into master
+      - name: Merge into default branch
         run: |
           set -euo pipefail
-          SOURCE_BRANCH="${{ github.ref_name }}"
 
-          git checkout master
-          git reset --hard origin/master
+          git checkout "$DEFAULT_BRANCH"
+          git reset --hard "origin/$DEFAULT_BRANCH"
           git merge --no-ff "origin/$SOURCE_BRANCH" \
-            -m "merge: 自动同步 $SOURCE_BRANCH → master (commit ${{ github.sha }})"
+            -m "merge: 自动同步 $SOURCE_BRANCH → $DEFAULT_BRANCH (commit ${{ github.sha }})"
 
       # ----------------------------------------------------------
-      # 5. 推送到远程 master
+      # 7. 推送到远程默认分支
       # ----------------------------------------------------------
-      - name: Push to origin/master
-        run: git push origin master
+      - name: Push to origin
+        run: git push origin "$DEFAULT_BRANCH"
 
       # ----------------------------------------------------------
-      # 6. 失败通知（PR/Issue 提示人工介入）
+      # 8. 失败通知（提示人工介入的本地命令）
       # ----------------------------------------------------------
       - name: Notify on failure
         if: failure()
         run: |
           echo "::error::合并失败，请人工处理后手动同步。"
-          echo "提示：在本地执行 'git checkout master && git pull && git merge ${{ github.ref_name }}'"
+          echo "提示：在本地执行"
+          echo "  git checkout $DEFAULT_BRANCH && git pull"
+          echo "  git checkout $SOURCE_BRANCH && git rebase $DEFAULT_BRANCH"
+          echo "  # 解决冲突后: git rebase --continue && git push origin $SOURCE_BRANCH"
