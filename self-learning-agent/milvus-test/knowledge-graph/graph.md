@@ -3,10 +3,10 @@
 > 单一事实源：`./graph.json`。本文件（Mermaid 图谱 + 节点说明表）严格对齐 JSON；新增节点时请同步两边。
 
 ## 对应章节
-- 锚点脚本：`src/insert.mjs`（建表 / 索引 / 灌库）+ `src/query.mjs`（向量检索）+ `src/rag.mjs`（RAG 检索增强生成闭环）+ `src/update.mjs`（upsert 实现“更新”）+ `src/delete.mjs`（三种姿势删除）
-- 范围：Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理
-- 节点总数：35（step: 19 / concept: 14 / param: 2）
-- 边总数：45
+- 锚点脚本：`src/insert.mjs`（建表 / 索引 / 灌库）+ `src/query.mjs`（向量检索）+ `src/rag.mjs`（RAG 检索增强生成闭环）+ `src/update.mjs`（upsert 实现“更新”）+ `src/delete.mjs`（三种姿势删除）+ `src/ebook-write.mjs`（EPUB 长文档 → 按章节 → 二次拆分 → 流式灌库）
+- 范围：Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 长文档预处理 + 系统管理
+- 节点总数：44（step: 22 / concept: 18 / param: 4）
+- 边总数：59
 
 ## 流程图（CRUD 全景）
 
@@ -26,6 +26,8 @@ flowchart TD
         alias["别名 Alias"]
         dim["VECTOR_DIM"]
         nlist["IVF_FLAT.nlist"]
+        chunkSize["CHUNK_SIZE"]
+        chunkOverlap["CHUNK_OVERLAP"]
     end
 
     %% ============ RAG 概念 ============
@@ -77,6 +79,17 @@ flowchart TD
         sRetrieve["step.retrieve<br/>检索<br/><i>src/rag.mjs</i>"]
         sAugment["step.augment<br/>增强<br/><i>src/rag.mjs</i>"]
         sGenerate["step.generate<br/>生成<br/><i>src/rag.mjs</i>"]
+    end
+
+    %% ============ 长文档预处理 ============
+    subgraph LONG_DOC["长文档预处理（ebook-write.mjs）"]
+        cEpubLoader["concept.epub_loader<br/>EPUB 加载器"]
+        cTextSplitter["concept.text_splitter<br/>文本拆分器"]
+        cChunk["concept.chunk<br/>Chunk 文本片段"]
+        cStreaming["concept.streaming<br/>流式处理"]
+        sLoadEpub["step.load_epub<br/>加载 EPUB<br/><i>src/ebook-write.mjs</i>"]
+        sSplitText["step.split_text<br/>文本拆分<br/><i>src/ebook-write.mjs</i>"]
+        sStreamingInsert["step.streaming_insert<br/>流式灌库<br/><i>src/ebook-write.mjs</i>"]
     end
 
     %% ---------- Create 链路 ----------
@@ -133,14 +146,31 @@ flowchart TD
     cRag -->|依赖| sAugment
     cRag -->|依赖| sGenerate
 
+    %% ---------- 长文档预处理链路 ----------
+    sLoadEpub -->|前置| sSplitText
+    sSplitText -->|前置| sStreamingInsert
+    sStreamingInsert -->|依赖| embedding
+    sStreamingInsert -->|依赖| sInsert
+    sStreamingInsert -->|依赖| cStreaming
+    sLoadEpub -->|依赖| cStreaming
+    cStreaming -->|依赖| cChunk
+    cChunk -->|依赖| cTextSplitter
+    cChunk -->|依赖| embedding
+    cEpubLoader -->|依赖| sLoadEpub
+    cTextSplitter -->|依赖| sSplitText
+    chunkSize -->|依赖| cTextSplitter
+    chunkOverlap -->|依赖| cTextSplitter
+    chunkSize -->|对照| chunkOverlap
+
     %% ---------- 样式 ----------
     classDef step fill:#dde9ff,stroke:#4a6fa5,color:#1a2b4a;
     classDef concept fill:#fff4d6,stroke:#a8923d,color:#5a4a1a;
     classDef param fill:#d6f0d6,stroke:#4a8c4a,color:#1a4a1a;
     classDef rag fill:#f7d6e8,stroke:#a83d7a,color:#5a1a3a;
-    class sConnect,sCreateCol,sCreateIdx,sLoad,sInsert,sQuery,sSearch,sHybrid,sGet,sUpsert,sDelete,sRelease,sDrop,sFlush,sCreatePart,sCreateAlias,sRetrieve,sAugment,sGenerate step;
-    class collection,field,schema,pk,index,metric,embedding,cFilterExpr,partition,alias concept;
-    class dim,nlist param;
+    classDef longdoc fill:#d6e8f0,stroke:#4a7a8c,color:#1a3a4a;
+    class sConnect,sCreateCol,sCreateIdx,sLoad,sInsert,sQuery,sSearch,sHybrid,sGet,sUpsert,sDelete,sRelease,sDrop,sFlush,sCreatePart,sCreateAlias,sRetrieve,sAugment,sGenerate,sLoadEpub,sSplitText,sStreamingInsert step;
+    class collection,field,schema,pk,index,metric,embedding,cFilterExpr,partition,alias,cEpubLoader,cTextSplitter,cChunk,cStreaming concept;
+    class dim,nlist,chunkSize,chunkOverlap param;
     class cRag,cPrompt,cContext,cLlm rag;
 ```
 
@@ -220,6 +250,15 @@ classDiagram
 | step.retrieve | 检索 | step | RAG 第一步：复用 client.search | `src/rag.mjs:44-63` |
 | step.augment | 增强 | step | RAG 第二步：拼 context + 组 prompt | `src/rag.mjs:93-118` |
 | step.generate | 生成 | step | RAG 第三步：`model.invoke` | `src/rag.mjs:120-126` |
+| concept.epub_loader | EPUB 加载器 | concept | EPubLoader 按章节拆 EPUB；splitChapters:true | `src/ebook-write.mjs:213-221` |
+| concept.text_splitter | 文本拆分器 | concept | RecursiveCharacterTextSplitter；递归分隔符层级 | `src/ebook-write.mjs:241-247` |
+| concept.chunk | Chunk 文本片段 | concept | 拆分后最小单元 = Milvus 一行；含 book_id/chapter_num/index | `src/ebook-write.mjs:261-282` |
+| concept.streaming | 流式处理 | concept | 边生成边插入，内存友好 + 失败可定位 | `src/ebook-write.mjs:208, 251-280` |
+| param.chunk_size | CHUNK_SIZE | param | 单 chunk 目标字符数（500） | `src/ebook-write.mjs:39` |
+| param.chunk_overlap | CHUNK_OVERLAP | param | 相邻 chunk 重叠字符数（50） | `src/ebook-write.mjs:246` |
+| step.load_epub | 加载 EPUB | step | `new EPubLoader(file, { splitChapters: true })` | `src/ebook-write.mjs:211-223` |
+| step.split_text | 文本拆分 | step | `textSplitter.splitText(chapter)` | `src/ebook-write.mjs:241-275` |
+| step.streaming_insert | 流式灬库 | step | 逐章循环：拆 → embed → insert | `src/ebook-write.mjs:249-282` |
 
 ## 边（关系）一览
 
