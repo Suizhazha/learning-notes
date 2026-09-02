@@ -38,12 +38,13 @@ jobs:
     if: github.event.pusher.type != 'Bot'
 
     # ------------------------------------------------------------
-    # 关键环境变量：所有 step 共用
-    # DEFAULT_BRANCH 由 API 动态探测，覆盖 main / master / 自定义命名
+    # job-level env 仅放静态变量
+    # SOURCE_BRANCH 在 push 触发时即已知，可在此处声明
+    # DEFAULT_BRANCH 来自 step output，不能在 job-level env 引用（解析时机问题）
+    #   改为：detect-default step 将其写入 $GITHUB_ENV，后续 step 自动继承
     # ------------------------------------------------------------
     env:
       SOURCE_BRANCH: ${{ github.ref_name }}
-      DEFAULT_BRANCH: ${{ steps.detect-default.outputs.branch }}
 
     steps:
       # ----------------------------------------------------------
@@ -91,6 +92,10 @@ jobs:
 
           echo "✅ 检测到默认分支: $DEFAULT_BRANCH"
           echo "branch=$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+          # 同时写入 $GITHUB_ENV，让后续所有 step 直接通过 $DEFAULT_BRANCH 访问
+          echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> "$GITHUB_ENV"
+          # SOURCE_BRANCH 也写入（确保后续 step 一致）
+          echo "SOURCE_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
 
       # ----------------------------------------------------------
       # 2. 校验：源分支不能等于默认分支（防止循环触发）
