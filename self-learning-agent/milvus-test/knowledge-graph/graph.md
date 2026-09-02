@@ -258,7 +258,7 @@ classDiagram
 | param.chunk_overlap | CHUNK_OVERLAP | param | 相邻 chunk 重叠字符数（50） | `src/ebook-write.mjs:246` |
 | step.load_epub | 加载 EPUB | step | `new EPubLoader(file, { splitChapters: true })` | `src/ebook-write.mjs:211-223` |
 | step.split_text | 文本拆分 | step | `textSplitter.splitText(chapter)` | `src/ebook-write.mjs:241-275` |
-| step.streaming_insert | 流式灬库 | step | 逐章循环：拆 → embed → insert | `src/ebook-write.mjs:249-282` |
+| step.streaming_insert | 流式灌库 | step | 逐章循环：拆 → embed → insert | `src/ebook-write.mjs:249-282` |
 
 ## 边（关系）一览
 
