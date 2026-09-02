@@ -1,11 +1,11 @@
 {
   "meta": {
     "project": "milvus-test",
-    "chapter": "insert.mjs + query.mjs + rag.mjs + update.mjs + delete.mjs 章节 → Milvus 完整 CRUD 全景 + RAG 闭环",
+    "chapter": "insert.mjs + query.mjs + rag.mjs + update.mjs + delete.mjs + ebook-write.mjs 章节 → Milvus 完整 CRUD + RAG 闭环 + 长文档灌库",
     "schema_version": 1,
     "generated_by": "manual",
-    "updated_at": "2026-09-01",
-    "description": "本图谱以 insert.mjs（建表/灌库）+ query.mjs（向量检索）+ rag.mjs（RAG 检索增强生成闭环）+ update.mjs（upsert 实现“更新”）+ delete.mjs（三种姿势删除）为锚点，覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 系统管理。后续新增 src/*.mjs 时只需在本 JSON 中加节点/边，并在 graph.md 中同步。"
+    "updated_at": "2026-09-02",
+    "description": "本图谱以 insert.mjs（建表/灌库）+ query.mjs（向量检索）+ rag.mjs（RAG 检索增强生成闭环）+ update.mjs（upsert 实现“更新”）+ delete.mjs（三种姿势删除）+ ebook-write.mjs（EPUB 长文档 → 按章节 → 二次拆分 → 流式灌库）为锚点，覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 长文档预处理 + 系统管理。后续新增 src/*.mjs 时只需在本 JSON 中加节点/边，并在 graph.md 中同步。"
   },
   "nodes": [
     {
@@ -137,6 +137,43 @@
     },
 
     {
+      "id": "concept.epub_loader",
+      "label": "EPUB 加载器",
+      "category": "concept",
+      "summary": "LangChain 的 EPubLoader：解析 .epub 文件，按章节（spine/ncx）切分成多个 Document，每个 Document 的 pageContent 是该章纯文本。splitChapters:true 时按章节拆，false 时整本为一个 Document。本项目用于长文档预处理。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "213-221",
+      "api": "new EPubLoader(file, { splitChapters: true })"
+    },
+    {
+      "id": "concept.text_splitter",
+      "label": "文本拆分器",
+      "category": "concept",
+      "summary": "RecursiveCharacterTextSplitter：按分隔符层级（\\n\\n → \\n → 句号 → 空格）递归切分长文本，优先使用大粒度分隔符保证语义完整。chunkOverlap 让相邻 chunk 末尾重叠若干字符，避免边界割裂语义。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "241-247",
+      "api": "new RecursiveCharacterTextSplitter({ chunkSize, chunkOverlap })"
+    },
+    {
+      "id": "concept.chunk",
+      "label": "Chunk 文本片段",
+      "category": "concept",
+      "summary": "长文档被拆分后的最小处理单元，对应 Milvus 中的一行记录。每个 chunk 携带其归属的 book_id / book_name / chapter_num / index 元信息，并生成一条 1024 维向量。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "261-282",
+      "api": "{ id, book_id, book_name, chapter_num, index, content, vector }"
+    },
+    {
+      "id": "concept.streaming",
+      "label": "流式处理",
+      "category": "concept",
+      "summary": "边生成边插入：一章一章处理，处理完立即写入 Milvus 后释放内存，避免一次性把整本书的 chunks 全量加载到内存引起 OOM。也能让失败定位到具体的章节便于重试。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "208, 251-280",
+      "api": "for (chapter) { split → embed → insert }"
+    },
+
+    {
       "id": "param.vector_dim",
       "label": "VECTOR_DIM",
       "category": "param",
@@ -153,6 +190,24 @@
       "impl_file": "src/insert.mjs",
       "impl_lines": "98",
       "api": "{ nlist: 1024 }"
+    },
+    {
+      "id": "param.chunk_size",
+      "label": "CHUNK_SIZE",
+      "category": "param",
+      "summary": "文本拆分的目标字符数（~500 字符）。太小则 Embedding 调用次数暴增、向量语义过于碎片；太大则召回粒度粗、单 chunk 可能超 Embedding 模型 token 上限。本项目 = 500。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "39",
+      "api": "chunkSize: 500"
+    },
+    {
+      "id": "param.chunk_overlap",
+      "label": "CHUNK_OVERLAP",
+      "category": "param",
+      "summary": "相邻 chunk 末尾重叠的字符数（50 字符）。避免跨边界语义被截断导致检索漏召；通常取 chunkSize 的 10%~20%。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "246",
+      "api": "chunkOverlap: 50"
     },
 
     {
@@ -199,6 +254,33 @@
       "impl_file": "src/insert.mjs",
       "impl_lines": "196-200",
       "api": "client.insert({ collection_name, data })"
+    },
+    {
+      "id": "step.load_epub",
+      "label": "加载 EPUB",
+      "category": "step",
+      "summary": "用 EPubLoader 读取 .epub 文件，按章节切分为 Document[]。每个 Document 的 pageContent 是该章的纯文本，可直接送入文本拆分器。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "211-223",
+      "api": "new EPubLoader(file, { splitChapters: true }).load()"
+    },
+    {
+      "id": "step.split_text",
+      "label": "文本拆分",
+      "category": "step",
+      "summary": "用 RecursiveCharacterTextSplitter 把单章长文本拆为 ~500 字符的短 chunk，相邻 chunk 保留 50 字符重叠。产物是 string[]，每个元素就是要灌库的一行。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "241-275",
+      "api": "textSplitter.splitText(chapterContent)"
+    },
+    {
+      "id": "step.streaming_insert",
+      "label": "流式灌库",
+      "category": "step",
+      "summary": "章节循环：拆 → 并行 Embedding → 一次 client.insert 写入整章。区别于 insert.mjs 的“全量准备好再插入”，这里是“边生成边写入”，内存友好且支持失败定位到具体章节。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "249-282",
+      "api": "for (chapter) { insertChunksBatch(chunks, bookId, chapterNum) }"
     },
     {
       "id": "step.upsert",
@@ -337,6 +419,21 @@
 
     { "from": "step.insert", "to": "step.upsert", "relation": "对照", "note": "upsert = insert + 按主键覆盖；update.mjs 走的就是 upsert" },
         { "from": "step.upsert", "to": "concept.embedding", "relation": "依赖", "note": "更新文本后必须重新 Embedding，否则向量与新文本失配" },
+
+    { "from": "step.load_epub", "to": "step.split_text", "relation": "前置", "note": "先有按章节 Document 才能二次切 chunk" },
+    { "from": "step.split_text", "to": "step.streaming_insert", "relation": "前置", "note": "chunks 生成后才能逐章插入" },
+    { "from": "step.streaming_insert", "to": "concept.embedding", "relation": "依赖", "note": "每个 chunk 都要走 Embedding 才能入库" },
+    { "from": "step.streaming_insert", "to": "step.insert", "relation": "依赖", "note": "流式灌库底层仍是 client.insert，只是按章节循环包装" },
+    { "from": "step.streaming_insert", "to": "concept.streaming", "relation": "依赖", "note": "流式处理是该步骤的核心设计" },
+    { "from": "concept.streaming", "to": "concept.chunk", "relation": "依赖", "note": "流式处理以 chunk 为单位推进" },
+    { "from": "concept.chunk", "to": "concept.embedding", "relation": "依赖", "note": "每个 chunk 都生成一条 Embedding 向量" },
+    { "from": "concept.chunk", "to": "concept.text_splitter", "relation": "依赖", "note": "chunk 是 text_splitter 的产物" },
+    { "from": "concept.epub_loader", "to": "step.load_epub", "relation": "依赖", "note": "EPubLoader 是 load_epub 步骤的具体实现" },
+    { "from": "concept.text_splitter", "to": "step.split_text", "relation": "依赖", "note": "TextSplitter 是 split_text 步骤的具体实现" },
+    { "from": "param.chunk_size", "to": "concept.text_splitter", "relation": "依赖", "note": "chunkSize 控制单 chunk 的目标长度" },
+    { "from": "param.chunk_overlap", "to": "concept.text_splitter", "relation": "依赖", "note": "chunkOverlap 控制相邻 chunk 的重叠字符数" },
+    { "from": "param.chunk_size", "to": "param.chunk_overlap", "relation": "对照", "note": "overlap 通常取 chunkSize 的 10%~20%" },
+    { "from": "step.load_epub", "to": "concept.streaming", "relation": "依赖", "note": "EPubLoader 按章节返回，是流式处理的起点" },
         { "from": "step.delete", "to": "concept.filter_expr", "relation": "依赖", "note": "delete 的入参是 filter 表达式" },
         { "from": "step.query", "to": "concept.filter_expr", "relation": "依赖", "note": "query 的入参也是 filter 表达式" },
     { "from": "step.search", "to": "step.hybrid_search", "relation": "对照", "note": "hybrid_search 是多个 search + rerank 的组合" },
