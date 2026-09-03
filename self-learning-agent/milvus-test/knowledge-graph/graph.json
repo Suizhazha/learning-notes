@@ -1,11 +1,11 @@
 {
   "meta": {
     "project": "milvus-test",
-    "chapter": "insert.mjs + query.mjs + rag.mjs + update.mjs + delete.mjs + ebook-write.mjs 章节 → Milvus 完整 CRUD + RAG 闭环 + 长文档灌库",
+    "chapter": "insert.mjs + query.mjs + rag.mjs + update.mjs + delete.mjs + ebook-write.mjs + ebook-render-rag-remote.mjs 章节 → Milvus 完整 CRUD + RAG 闭环 + 长文档灌库 + 电子书 RAG 远程问答",
     "schema_version": 1,
     "generated_by": "manual",
-    "updated_at": "2026-09-02",
-    "description": "本图谱以 insert.mjs（建表/灌库）+ query.mjs（向量检索）+ rag.mjs（RAG 检索增强生成闭环）+ update.mjs（upsert 实现“更新”）+ delete.mjs（三种姿势删除）+ ebook-write.mjs（EPUB 长文档 → 按章节 → 二次拆分 → 流式灌库）为锚点，覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 长文档预处理 + 系统管理。后续新增 src/*.mjs 时只需在本 JSON 中加节点/边，并在 graph.md 中同步。"
+    "updated_at": "2026-09-03",
+    "description": "本图谱以 insert.mjs（建表/灌库）+ query.mjs（向量检索）+ rag.mjs（RAG 检索增强生成闭环）+ update.mjs（upsert 实现“更新”）+ delete.mjs（三种姿势删除）+ ebook-write.mjs（EPUB 长文档 → 按章节 → 二次拆分 → 流式灌库）为锚点，覆盖 Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 长文档预处理 + 系统管理 + 系统管理 + Zilliz Cloud Serverless 改造 + jsonl 落盘 + 电子书 RAG 远程问答。后续新增 src/*.mjs 时只需在本 JSON 中加节点/边，并在 graph.md 中同步。"
   },
   "nodes": [
     {
@@ -48,7 +48,7 @@
       "id": "concept.index",
       "label": "索引 Index",
       "category": "concept",
-      "summary": "为向量字段建立的近似最近邻（ANN）索引；决定 search 时的召回率与延迟。索引类型有 IVF_FLAT / IVF_PQ / IVF_SQ8 / HNSW / ANNOY / DISKANN 等。",
+      "summary": "为向量字段建立的近似最近邻（ANN）索引；决定 search 时的召回率与延迟。索引类型有 IVF_FLAT / IVF_PQ / IVF_SQ8 / HNSW / ANNOY / DISKANN 等。Zilliz Cloud Serverless 只能使用 AUTOINDEX（参数由云侧选定，调用方只需传 metric_type）。",
       "impl_file": "src/insert.mjs",
       "impl_lines": "93-99",
       "api": "client.createIndex({ field_name, index_type, metric_type, params })"
@@ -89,7 +89,6 @@
       "impl_lines": null,
       "api": "client.createAlias({ alias_name, collection_name })"
     },
-
     {
       "id": "concept.rag",
       "label": "RAG 检索增强生成",
@@ -135,7 +134,6 @@
       "impl_lines": "93-101",
       "api": "items.map(...).join('\\n\\n━━━━━\\n\\n')"
     },
-
     {
       "id": "concept.epub_loader",
       "label": "EPUB 加载器",
@@ -172,7 +170,60 @@
       "impl_lines": "208, 251-280",
       "api": "for (chapter) { split → embed → insert }"
     },
-
+    {
+      "id": "concept.zilliz_serverless",
+      "label": "Zilliz Cloud Serverless",
+      "category": "concept",
+      "summary": "Zilliz 提供的全托管 Serverless 部署。与 standalone / Dedicated 的区别：(1) 连接走公共 endpoint + ApiKey token，不需要 username/password；(2) 只能使用 AUTOINDEX（底层算法由云侧决定）；(3) 没有 loadCollection / releaseCollection 概念，search 内部按需拉取；(4) 默认 database 名为 “default”。本项目已切换到 Serverless（ali-cn-hangzhou 地域）。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "121-133, 226-235",
+      "api": "new MilvusClient({ address, token, database })"
+    },
+    {
+      "id": "concept.autoindex",
+      "label": "AUTOINDEX 索引",
+      "category": "concept",
+      "summary": "Serverless 集群唯一支持的索引类型。与 IVF_FLAT / HNSW / DISKANN 的区别：AUTOINDEX 的 ANN 算法和参数都由 Zilliz Cloud 内部选定（一般是 HNSW 变体），调用方只需传 metric_type（COSINE / L2 / IP），params 留空。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "226-235",
+      "api": "client.createIndex({ index_type: IndexType.AUTOINDEX, params: {} })"
+    },
+    {
+      "id": "concept.jsonl_persist",
+      "label": "jsonl 落盘",
+      "category": "concept",
+      "summary": "成功插入到 Milvus 后，同步把 chunk 元信息（id / book_id / chapter_num / index / content）以追加模式写到 ./data/<safeBookName>__chunks.jsonl，一行一个 JSON。不写 vector 数组（1024 浮点会爆文件），只记 vector_dim。用途包括审计、重灌、对账。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "150-170",
+      "api": "await appendJsonl(record)"
+    },
+    {
+      "id": "concept.env_validation",
+      "label": "启动校验 validateEnv",
+      "category": "concept",
+      "summary": "脚本启动时一次性检查必需环境变量（MILVUS_ADDRESS / MILVUS_TOKEN / OPENAI_API_KEY / OPENAI_BASE_URL / EMBEDDINGS_MODEL_NAME），任意一项缺失直接 process.exit(1)，避免在连接 / Embedding 阶段报模糊错误。MILVUS_DB_NAME 可选，缺省 “default”。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "82-103",
+      "api": "validateEnv()"
+    },
+    {
+      "id": "concept.idempotent_pk",
+      "label": "幂等主键设计",
+      "category": "concept",
+      "summary": "id 字段为 ${bookId}_${chapterNum}_${chunkIndex} 三段拼接。同一份 EPUB 重跑不会产生重复记录（主键冲突会被覆盖），同时可同时定位“哪本书 / 哪一章 / 哪一段”，便于 update / delete。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "23, 197-198",
+      "api": "id: `${bookId}_${chapterNum}_${chunkIndex}`"
+    },
+    {
+      "id": "concept.per_chapter_resilience",
+      "label": "单章容错",
+      "category": "concept",
+      "summary": "流式灌库过程中在章节循环外加 try/catch：某一章失败不中断整体流程，收集到 failedChapters 列表最终汇总。有利于长文档的“局部重试 + 整体继续”。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "267-280",
+      "api": "try { ... } catch { failedChapters.push(chapterNum) }"
+    },
     {
       "id": "param.vector_dim",
       "label": "VECTOR_DIM",
@@ -209,7 +260,33 @@
       "impl_lines": "246",
       "api": "chunkOverlap: 50"
     },
-
+    {
+      "id": "param.milvus_address",
+      "label": "MILVUS_ADDRESS",
+      "category": "param",
+      "summary": "Zilliz Cloud Serverless 集群的公共 endpoint。ali-cn-hangzhou 地域的格式形如 https://in03-xxx.serverless.ali-cn-hangzhou.cloud.zilliz.com.cn，从控制台→集群详情→Overview 拷出。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "129-131",
+      "api": "process.env.MILVUS_ADDRESS"
+    },
+    {
+      "id": "param.milvus_token",
+      "label": "MILVUS_TOKEN",
+      "category": "param",
+      "summary": "Zilliz Cloud 的 ApiKey，从控制台→集群详情→API Key 生成 / 拷贝。写入 MilvusClient 的 token 字段，代替 standalone 的 username/password。需严守 .env 不入库。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "129-132",
+      "api": "process.env.MILVUS_TOKEN"
+    },
+    {
+      "id": "param.milvus_db_name",
+      "label": "MILVUS_DB_NAME",
+      "category": "param",
+      "summary": "Serverless 数据库名。Serverless 默认为 “default”，可建自定义 db。validateEnv() 在缺省时补齐为 “default”。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "101-102, 132",
+      "api": "process.env.MILVUS_DB_NAME || \"default\""
+    },
     {
       "id": "step.connect",
       "label": "连接 Connect",
@@ -241,7 +318,7 @@
       "id": "step.load_collection",
       "label": "加载集合",
       "category": "step",
-      "summary": "把集合从磁盘加载到 QueryNode 内存中，加载后 search / query 才能用；插入本身不要求加载。",
+      "summary": "把集合从磁盘加载到 QueryNode 内存中，加载后 search / query 才能用；插入本身不要求加载。注意：仅 standalone / Dedicated 集群需要；Zilliz Cloud Serverless 无需 loadCollection。",
       "impl_file": "src/insert.mjs",
       "impl_lines": "105-106",
       "api": "client.loadCollection({ collection_name })"
@@ -281,6 +358,24 @@
       "impl_file": "src/ebook-write.mjs",
       "impl_lines": "249-282",
       "api": "for (chapter) { insertChunksBatch(chunks, bookId, chapterNum) }"
+    },
+    {
+      "id": "step.validate_env",
+      "label": "环境变量启动校验",
+      "category": "step",
+      "summary": "脚本入口首调 validateEnv()：检查 MILVUS_ADDRESS / MILVUS_TOKEN / OPENAI_API_KEY / OPENAI_BASE_URL / EMBEDDINGS_MODEL_NAME，缺任意一项直接退出并提示。未通过则不连 Milvus，避免后续连接 / Embedding 阶段报模糊错误。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "82-103, 425-431",
+      "api": "validateEnv()"
+    },
+    {
+      "id": "step.persist_jsonl",
+      "label": "jsonl 落盘",
+      "category": "step",
+      "summary": "每条 chunk 成功插入 Milvus 后调用 appendJsonl()，以追加模式写到 ./data/<safeBookName>__chunks.jsonl，一行一个 JSON。Milvus 成功后才落盘，保证 jsonl 是“已成功入库”的可靠索引。vector 不落盘，只记 vector_dim。",
+      "impl_file": "src/ebook-write.mjs",
+      "impl_lines": "150-170, 295-300",
+      "api": "await appendJsonl(record)"
     },
     {
       "id": "step.upsert",
@@ -381,7 +476,6 @@
       "impl_lines": null,
       "api": "client.dropCollection({ collection_name })"
     },
-
     {
       "id": "step.retrieve",
       "label": "检索 Retrieve",
@@ -408,73 +502,705 @@
       "impl_file": "src/rag.mjs",
       "impl_lines": "120-126",
       "api": "model.invoke(prompt) → response.content"
+    },
+    {
+      "id": "concept.ebook_rag",
+      "label": "电子书 RAG 远程问答",
+      "category": "concept",
+      "summary": "在长文档集合 ebook_collection 上跑 RAG 闭环：问题 → 向量化 → 服务端 search → 拿回 top-k 片段 → 拼上下文 → prompt 模板 → LLM 回答。代表脚本 src/ebook-render-rag-remote.mjs。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "1-166",
+      "api": "client.search + ChatOpenAI.invoke"
+    },
+    {
+      "id": "concept.ebook_rag_collection",
+      "label": "ebook_collection（长文档集合）",
+      "category": "concept",
+      "summary": "EPUB 灬库的目标集合，包含 id / book_id / chapter_num / index / content / vector 六个字段；ebook-render-rag-remote.mjs 在它上面跑 search。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "5",
+      "api": "const COLLECTION_NAME = 'ebook_collection'"
+    },
+    {
+      "id": "concept.output_fields",
+      "label": "output_fields 字段投影",
+      "category": "concept",
+      "summary": "client.search 的可选参数；白名单指定要随 search 结果返回的标量字段，避免把整行 entity 都拉回。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "59-65",
+      "api": "output_fields: ['id','book_id','chapter_num','index','content']"
+    },
+    {
+      "id": "concept.fail_safe",
+      "label": "RAG 双层 fail-safe 降级",
+      "category": "concept",
+      "summary": "检索层 + 回答层双 try/catch：retrieveRelevantContent 失败返回 []、answerEbookQuestion 失败返回降级文案；保证外部 main() 永远不抛。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "68-72, 134-137, 160-163",
+      "api": "try/catch + 默认返回"
+    },
+    {
+      "id": "step.connect_load_safe",
+      "label": "connect + loadCollection（容错）",
+      "category": "step",
+      "summary": "启动时 client.connectPromise 建立 Serverless 连接；再 loadCollection 装载集合，捕获 already loaded 视为幂等成功。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "140-156",
+      "api": "client.connectPromise + client.loadCollection"
+    },
+    {
+      "id": "step.augment_ebook_context",
+      "label": "构建长文档上下文",
+      "category": "step",
+      "summary": "把 top-k 个 search 命中按 [片段 i / 章节 / 内容] 模板用 ━━━━━ 分隔拼成长上下文字符串。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "102-108",
+      "api": "retrievedContent.map().join('\\n\\n━━━━━\\n\\n')"
+    },
+    {
+      "id": "step.augment_ebook_prompt",
+      "label": "构建长文档 prompt",
+      "category": "step",
+      "summary": "拼出 system 角色化指令 + 上下文 + 问题 + 5 条回答规则的 prompt 模板，引导 LLM 引用片段作答。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "111-125",
+      "api": "string template"
+    },
+    {
+      "id": "step.generate_ebook_answer",
+      "label": "调用 LLM 生成回答",
+      "category": "step",
+      "summary": "用 ChatOpenAI.invoke(prompt) 拿到 response.content 打印并返回。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "127-133",
+      "api": "await model.invoke(prompt)"
+    },
+    {
+      "id": "step.degrade_fallback",
+      "label": "回答失败降级文案",
+      "category": "step",
+      "summary": "retrieveRelevantContent 失败返回 []、answerEbookQuestion 异常返回固定中文降级文案，main() 捕获后只 console.error。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "68-72, 134-137",
+      "api": "return 固定中文"
+    },
+    {
+      "id": "concept.three_kingdoms",
+      "label": "三国演义领域语料",
+      "category": "concept",
+      "summary": "ebook-render-rag-remote.mjs 的目标语料：罗贯中《三国演义》EPUB，灬库后用 RAG 答人物/武器/情节类问题。",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "impl_lines": "111, 159",
+      "api": "硬编码 '三国演义' / 问句 '赵云是使用什么武器？'"
     }
   ],
   "edges": [
-    { "from": "step.connect", "to": "step.create_collection", "relation": "前置", "note": "必须先连接才能建集合" },
-    { "from": "step.create_collection", "to": "step.create_index", "relation": "前置", "note": "字段定义存在后才能给 vector 建索引" },
-    { "from": "step.create_collection", "to": "step.load_collection", "relation": "前置", "note": "集合必须存在才能加载" },
-    { "from": "step.create_index", "to": "step.load_collection", "relation": "无依赖", "note": "索引与加载互不阻塞，但通常一起做" },
-    { "from": "step.load_collection", "to": "step.insert", "relation": "无依赖", "note": "插入不需要加载，但脚本顺序中排在加载之后" },
-
-    { "from": "step.insert", "to": "step.upsert", "relation": "对照", "note": "upsert = insert + 按主键覆盖；update.mjs 走的就是 upsert" },
-        { "from": "step.upsert", "to": "concept.embedding", "relation": "依赖", "note": "更新文本后必须重新 Embedding，否则向量与新文本失配" },
-
-    { "from": "step.load_epub", "to": "step.split_text", "relation": "前置", "note": "先有按章节 Document 才能二次切 chunk" },
-    { "from": "step.split_text", "to": "step.streaming_insert", "relation": "前置", "note": "chunks 生成后才能逐章插入" },
-    { "from": "step.streaming_insert", "to": "concept.embedding", "relation": "依赖", "note": "每个 chunk 都要走 Embedding 才能入库" },
-    { "from": "step.streaming_insert", "to": "step.insert", "relation": "依赖", "note": "流式灌库底层仍是 client.insert，只是按章节循环包装" },
-    { "from": "step.streaming_insert", "to": "concept.streaming", "relation": "依赖", "note": "流式处理是该步骤的核心设计" },
-    { "from": "concept.streaming", "to": "concept.chunk", "relation": "依赖", "note": "流式处理以 chunk 为单位推进" },
-    { "from": "concept.chunk", "to": "concept.embedding", "relation": "依赖", "note": "每个 chunk 都生成一条 Embedding 向量" },
-    { "from": "concept.chunk", "to": "concept.text_splitter", "relation": "依赖", "note": "chunk 是 text_splitter 的产物" },
-    { "from": "concept.epub_loader", "to": "step.load_epub", "relation": "依赖", "note": "EPubLoader 是 load_epub 步骤的具体实现" },
-    { "from": "concept.text_splitter", "to": "step.split_text", "relation": "依赖", "note": "TextSplitter 是 split_text 步骤的具体实现" },
-    { "from": "param.chunk_size", "to": "concept.text_splitter", "relation": "依赖", "note": "chunkSize 控制单 chunk 的目标长度" },
-    { "from": "param.chunk_overlap", "to": "concept.text_splitter", "relation": "依赖", "note": "chunkOverlap 控制相邻 chunk 的重叠字符数" },
-    { "from": "param.chunk_size", "to": "param.chunk_overlap", "relation": "对照", "note": "overlap 通常取 chunkSize 的 10%~20%" },
-    { "from": "step.load_epub", "to": "concept.streaming", "relation": "依赖", "note": "EPubLoader 按章节返回，是流式处理的起点" },
-        { "from": "step.delete", "to": "concept.filter_expr", "relation": "依赖", "note": "delete 的入参是 filter 表达式" },
-        { "from": "step.query", "to": "concept.filter_expr", "relation": "依赖", "note": "query 的入参也是 filter 表达式" },
-    { "from": "step.search", "to": "step.hybrid_search", "relation": "对照", "note": "hybrid_search 是多个 search + rerank 的组合" },
-    { "from": "step.search", "to": "step.get", "relation": "后置", "note": "search 返回 id 后用 get 拉回完整记录" },
-
-    { "from": "concept.collection", "to": "concept.field", "relation": "依赖", "note": "集合由一组字段组成" },
-    { "from": "concept.collection", "to": "concept.index", "relation": "依赖", "note": "集合可挂载索引，但不是必须" },
-    { "from": "concept.collection", "to": "concept.partition", "relation": "依赖", "note": "分区属于集合" },
-    { "from": "concept.collection", "to": "concept.alias", "relation": "依赖", "note": "别名指向集合" },
-    { "from": "concept.field", "to": "concept.schema", "relation": "依赖", "note": "schema = 字段列表" },
-    { "from": "concept.field", "to": "concept.primary_key", "relation": "依赖", "note": "主键是一种特殊的字段" },
-    { "from": "concept.field", "to": "concept.embedding", "relation": "依赖", "note": "向量字段承载 Embedding 结果" },
-    { "from": "concept.index", "to": "concept.metric", "relation": "依赖", "note": "索引必须指定度量方式" },
-
-    { "from": "param.vector_dim", "to": "concept.embedding", "relation": "依赖", "note": "Embedding 输出维度 = VECTOR_DIM" },
-    { "from": "param.vector_dim", "to": "concept.field", "relation": "依赖", "note": "FloatVector.dim = VECTOR_DIM" },
-    { "from": "param.ivf_flat", "to": "concept.index", "relation": "依赖", "note": "nlist 是 IVF_FLAT 索引的参数" },
-    { "from": "param.ivf_flat", "to": "concept.metric", "relation": "依赖", "note": "IVF_FLAT 通常配合 COSINE 或 L2" },
-
-    { "from": "step.search", "to": "step.load_collection", "relation": "前置", "note": "集合必须已加载才能 search" },
-    { "from": "step.search", "to": "concept.embedding", "relation": "依赖", "note": "search 前必须先把查询文本 Embedding 成向量" },
-    { "from": "step.search", "to": "concept.metric", "relation": "依赖", "note": "search 的 metric_type 必须与索引一致" },
-    { "from": "step.search", "to": "step.query", "relation": "对照", "note": "文件命名差异：query.mjs 实际演示的是 search；SDK 中 search=ANN, query=标量过滤" },
-    { "from": "step.query", "to": "step.load_collection", "relation": "前置", "note": "集合必须已加载才能 query" },
-    { "from": "step.delete", "to": "step.flush", "relation": "无依赖", "note": "删除后通常 flush 让刷盘更彻底" },
-    { "from": "step.release_collection", "to": "step.load_collection", "relation": "对照", "note": "释放与加载是一对反向操作" },
-    { "from": "step.drop_collection", "to": "step.release_collection", "relation": "前置", "note": "删除前建议先释放" },
-    { "from": "step.create_partition", "to": "step.insert", "relation": "前置", "note": "建好分区才能在写入时指定它" },
-    { "from": "step.create_alias", "to": "step.create_collection", "relation": "前置", "note": "别名指向已存在的集合" },
-
-    { "from": "step.retrieve", "to": "step.search", "relation": "依赖", "note": "RAG 的检索复用 client.search，只是换了层封装" },
-    { "from": "step.retrieve", "to": "concept.embedding", "relation": "依赖", "note": "检索前需把问题 Embedding 成向量" },
-    { "from": "step.augment", "to": "step.retrieve", "relation": "前置", "note": "必须先有检索结果才能拼 context" },
-    { "from": "step.augment", "to": "concept.context", "relation": "依赖", "note": "context 是 augment 的核心产物" },
-    { "from": "step.augment", "to": "concept.prompt", "relation": "依赖", "note": "prompt 是 augment 的最终输出" },
-    { "from": "step.generate", "to": "step.augment", "relation": "前置", "note": "LLM 需要 prompt 才能生成" },
-    { "from": "step.generate", "to": "concept.llm", "relation": "依赖", "note": "generate 调用 LLM" },
-    { "from": "concept.rag", "to": "step.retrieve", "relation": "依赖", "note": "R = Retrieve" },
-    { "from": "concept.rag", "to": "step.augment", "relation": "依赖", "note": "A = Augment" },
-    { "from": "concept.rag", "to": "step.generate", "relation": "依赖", "note": "G = Generate" },
-    { "from": "concept.context", "to": "step.retrieve", "relation": "依赖", "note": "context 由检索结果组装" },
-    { "from": "concept.prompt", "to": "concept.context", "relation": "依赖", "note": "prompt 内嵌 context" }
+    {
+      "from": "step.connect",
+      "to": "step.create_collection",
+      "relation": "前置",
+      "note": "必须先连接才能建集合"
+    },
+    {
+      "from": "step.create_collection",
+      "to": "step.create_index",
+      "relation": "前置",
+      "note": "字段定义存在后才能给 vector 建索引"
+    },
+    {
+      "from": "step.create_collection",
+      "to": "step.load_collection",
+      "relation": "前置",
+      "note": "集合必须存在才能加载"
+    },
+    {
+      "from": "step.create_index",
+      "to": "step.load_collection",
+      "relation": "无依赖",
+      "note": "索引与加载互不阻塞，但通常一起做"
+    },
+    {
+      "from": "step.load_collection",
+      "to": "step.insert",
+      "relation": "无依赖",
+      "note": "插入不需要加载，但脚本顺序中排在加载之后"
+    },
+    {
+      "from": "step.insert",
+      "to": "step.upsert",
+      "relation": "对照",
+      "note": "upsert = insert + 按主键覆盖；update.mjs 走的就是 upsert"
+    },
+    {
+      "from": "step.upsert",
+      "to": "concept.embedding",
+      "relation": "依赖",
+      "note": "更新文本后必须重新 Embedding，否则向量与新文本失配"
+    },
+    {
+      "from": "step.load_epub",
+      "to": "step.split_text",
+      "relation": "前置",
+      "note": "先有按章节 Document 才能二次切 chunk"
+    },
+    {
+      "from": "step.split_text",
+      "to": "step.streaming_insert",
+      "relation": "前置",
+      "note": "chunks 生成后才能逐章插入"
+    },
+    {
+      "from": "step.streaming_insert",
+      "to": "concept.embedding",
+      "relation": "依赖",
+      "note": "每个 chunk 都要走 Embedding 才能入库"
+    },
+    {
+      "from": "step.streaming_insert",
+      "to": "step.insert",
+      "relation": "依赖",
+      "note": "流式灌库底层仍是 client.insert，只是按章节循环包装"
+    },
+    {
+      "from": "step.streaming_insert",
+      "to": "concept.streaming",
+      "relation": "依赖",
+      "note": "流式处理是该步骤的核心设计"
+    },
+    {
+      "from": "concept.streaming",
+      "to": "concept.chunk",
+      "relation": "依赖",
+      "note": "流式处理以 chunk 为单位推进"
+    },
+    {
+      "from": "concept.chunk",
+      "to": "concept.embedding",
+      "relation": "依赖",
+      "note": "每个 chunk 都生成一条 Embedding 向量"
+    },
+    {
+      "from": "concept.chunk",
+      "to": "concept.text_splitter",
+      "relation": "依赖",
+      "note": "chunk 是 text_splitter 的产物"
+    },
+    {
+      "from": "concept.epub_loader",
+      "to": "step.load_epub",
+      "relation": "依赖",
+      "note": "EPubLoader 是 load_epub 步骤的具体实现"
+    },
+    {
+      "from": "concept.text_splitter",
+      "to": "step.split_text",
+      "relation": "依赖",
+      "note": "TextSplitter 是 split_text 步骤的具体实现"
+    },
+    {
+      "from": "param.chunk_size",
+      "to": "concept.text_splitter",
+      "relation": "依赖",
+      "note": "chunkSize 控制单 chunk 的目标长度"
+    },
+    {
+      "from": "param.chunk_overlap",
+      "to": "concept.text_splitter",
+      "relation": "依赖",
+      "note": "chunkOverlap 控制相邻 chunk 的重叠字符数"
+    },
+    {
+      "from": "param.chunk_size",
+      "to": "param.chunk_overlap",
+      "relation": "对照",
+      "note": "overlap 通常取 chunkSize 的 10%~20%"
+    },
+    {
+      "from": "step.load_epub",
+      "to": "concept.streaming",
+      "relation": "依赖",
+      "note": "EPubLoader 按章节返回，是流式处理的起点"
+    },
+    {
+      "from": "step.delete",
+      "to": "concept.filter_expr",
+      "relation": "依赖",
+      "note": "delete 的入参是 filter 表达式"
+    },
+    {
+      "from": "step.query",
+      "to": "concept.filter_expr",
+      "relation": "依赖",
+      "note": "query 的入参也是 filter 表达式"
+    },
+    {
+      "from": "step.search",
+      "to": "step.hybrid_search",
+      "relation": "对照",
+      "note": "hybrid_search 是多个 search + rerank 的组合"
+    },
+    {
+      "from": "step.search",
+      "to": "step.get",
+      "relation": "后置",
+      "note": "search 返回 id 后用 get 拉回完整记录"
+    },
+    {
+      "from": "concept.collection",
+      "to": "concept.field",
+      "relation": "依赖",
+      "note": "集合由一组字段组成"
+    },
+    {
+      "from": "concept.collection",
+      "to": "concept.index",
+      "relation": "依赖",
+      "note": "集合可挂载索引，但不是必须"
+    },
+    {
+      "from": "concept.collection",
+      "to": "concept.partition",
+      "relation": "依赖",
+      "note": "分区属于集合"
+    },
+    {
+      "from": "concept.collection",
+      "to": "concept.alias",
+      "relation": "依赖",
+      "note": "别名指向集合"
+    },
+    {
+      "from": "concept.field",
+      "to": "concept.schema",
+      "relation": "依赖",
+      "note": "schema = 字段列表"
+    },
+    {
+      "from": "concept.field",
+      "to": "concept.primary_key",
+      "relation": "依赖",
+      "note": "主键是一种特殊的字段"
+    },
+    {
+      "from": "concept.field",
+      "to": "concept.embedding",
+      "relation": "依赖",
+      "note": "向量字段承载 Embedding 结果"
+    },
+    {
+      "from": "concept.index",
+      "to": "concept.metric",
+      "relation": "依赖",
+      "note": "索引必须指定度量方式"
+    },
+    {
+      "from": "param.vector_dim",
+      "to": "concept.embedding",
+      "relation": "依赖",
+      "note": "Embedding 输出维度 = VECTOR_DIM"
+    },
+    {
+      "from": "param.vector_dim",
+      "to": "concept.field",
+      "relation": "依赖",
+      "note": "FloatVector.dim = VECTOR_DIM"
+    },
+    {
+      "from": "param.ivf_flat",
+      "to": "concept.index",
+      "relation": "依赖",
+      "note": "nlist 是 IVF_FLAT 索引的参数"
+    },
+    {
+      "from": "param.ivf_flat",
+      "to": "concept.metric",
+      "relation": "依赖",
+      "note": "IVF_FLAT 通常配合 COSINE 或 L2"
+    },
+    {
+      "from": "step.search",
+      "to": "step.load_collection",
+      "relation": "前置",
+      "note": "集合必须已加载才能 search"
+    },
+    {
+      "from": "step.search",
+      "to": "concept.embedding",
+      "relation": "依赖",
+      "note": "search 前必须先把查询文本 Embedding 成向量"
+    },
+    {
+      "from": "step.search",
+      "to": "concept.metric",
+      "relation": "依赖",
+      "note": "search 的 metric_type 必须与索引一致"
+    },
+    {
+      "from": "step.search",
+      "to": "step.query",
+      "relation": "对照",
+      "note": "文件命名差异：query.mjs 实际演示的是 search；SDK 中 search=ANN, query=标量过滤"
+    },
+    {
+      "from": "step.query",
+      "to": "step.load_collection",
+      "relation": "前置",
+      "note": "集合必须已加载才能 query"
+    },
+    {
+      "from": "step.delete",
+      "to": "step.flush",
+      "relation": "无依赖",
+      "note": "删除后通常 flush 让刷盘更彻底"
+    },
+    {
+      "from": "step.release_collection",
+      "to": "step.load_collection",
+      "relation": "对照",
+      "note": "释放与加载是一对反向操作"
+    },
+    {
+      "from": "step.drop_collection",
+      "to": "step.release_collection",
+      "relation": "前置",
+      "note": "删除前建议先释放"
+    },
+    {
+      "from": "step.create_partition",
+      "to": "step.insert",
+      "relation": "前置",
+      "note": "建好分区才能在写入时指定它"
+    },
+    {
+      "from": "step.create_alias",
+      "to": "step.create_collection",
+      "relation": "前置",
+      "note": "别名指向已存在的集合"
+    },
+    {
+      "from": "step.retrieve",
+      "to": "step.search",
+      "relation": "依赖",
+      "note": "RAG 的检索复用 client.search，只是换了层封装"
+    },
+    {
+      "from": "step.retrieve",
+      "to": "concept.embedding",
+      "relation": "依赖",
+      "note": "检索前需把问题 Embedding 成向量"
+    },
+    {
+      "from": "step.augment",
+      "to": "step.retrieve",
+      "relation": "前置",
+      "note": "必须先有检索结果才能拼 context"
+    },
+    {
+      "from": "step.augment",
+      "to": "concept.context",
+      "relation": "依赖",
+      "note": "context 是 augment 的核心产物"
+    },
+    {
+      "from": "step.augment",
+      "to": "concept.prompt",
+      "relation": "依赖",
+      "note": "prompt 是 augment 的最终输出"
+    },
+    {
+      "from": "step.generate",
+      "to": "step.augment",
+      "relation": "前置",
+      "note": "LLM 需要 prompt 才能生成"
+    },
+    {
+      "from": "step.generate",
+      "to": "concept.llm",
+      "relation": "依赖",
+      "note": "generate 调用 LLM"
+    },
+    {
+      "from": "concept.rag",
+      "to": "step.retrieve",
+      "relation": "依赖",
+      "note": "R = Retrieve"
+    },
+    {
+      "from": "concept.rag",
+      "to": "step.augment",
+      "relation": "依赖",
+      "note": "A = Augment"
+    },
+    {
+      "from": "concept.rag",
+      "to": "step.generate",
+      "relation": "依赖",
+      "note": "G = Generate"
+    },
+    {
+      "from": "concept.context",
+      "to": "step.retrieve",
+      "relation": "依赖",
+      "note": "context 由检索结果组装"
+    },
+    {
+      "from": "concept.prompt",
+      "to": "concept.context",
+      "relation": "依赖",
+      "note": "prompt 内嵌 context"
+    },
+    {
+      "from": "step.validate_env",
+      "to": "step.connect",
+      "relation": "前置",
+      "note": "validateEnv 通过后才能创建 / 使用 MilvusClient"
+    },
+    {
+      "from": "concept.env_validation",
+      "to": "step.validate_env",
+      "relation": "依赖",
+      "note": "validate_env 步骤的具体实现 = validateEnv() 函数"
+    },
+    {
+      "from": "concept.env_validation",
+      "to": "param.milvus_address",
+      "relation": "依赖",
+      "note": "校验必含 MILVUS_ADDRESS"
+    },
+    {
+      "from": "concept.env_validation",
+      "to": "param.milvus_token",
+      "relation": "依赖",
+      "note": "校验必含 MILVUS_TOKEN"
+    },
+    {
+      "from": "concept.env_validation",
+      "to": "param.milvus_db_name",
+      "relation": "依赖",
+      "note": "缺省补齐为 default"
+    },
+    {
+      "from": "step.connect",
+      "to": "concept.zilliz_serverless",
+      "relation": "依赖",
+      "note": "Serverless 连接传 address + token；本项目已切换到 Serverless"
+    },
+    {
+      "from": "concept.zilliz_serverless",
+      "to": "param.milvus_address",
+      "relation": "依赖",
+      "note": "Serverless 地址走公共 endpoint"
+    },
+    {
+      "from": "concept.zilliz_serverless",
+      "to": "param.milvus_token",
+      "relation": "依赖",
+      "note": "Serverless 鉴权走 ApiKey token"
+    },
+    {
+      "from": "concept.zilliz_serverless",
+      "to": "param.milvus_db_name",
+      "relation": "依赖",
+      "note": "Serverless database 参数（默认 default）"
+    },
+    {
+      "from": "concept.zilliz_serverless",
+      "to": "concept.autoindex",
+      "relation": "依赖",
+      "note": "Serverless 只支持 AUTOINDEX"
+    },
+    {
+      "from": "concept.autoindex",
+      "to": "concept.index",
+      "relation": "依赖",
+      "note": "AUTOINDEX 是索引的一种特殊形态"
+    },
+    {
+      "from": "concept.autoindex",
+      "to": "concept.metric",
+      "relation": "依赖",
+      "note": "仍然需要显式传 metric_type（与 search 保持一致）"
+    },
+    {
+      "from": "concept.zilliz_serverless",
+      "to": "step.load_collection",
+      "relation": "对照",
+      "note": "Serverless 不需要 loadCollection / releaseCollection"
+    },
+    {
+      "from": "step.persist_jsonl",
+      "to": "step.streaming_insert",
+      "relation": "后置",
+      "note": "在流式灌库成功后才调 appendJsonl 落盘"
+    },
+    {
+      "from": "concept.jsonl_persist",
+      "to": "step.persist_jsonl",
+      "relation": "依赖",
+      "note": "jsonl_persist 是 persist_jsonl 步骤的具体实现 = appendJsonl() 函数"
+    },
+    {
+      "from": "concept.jsonl_persist",
+      "to": "concept.chunk",
+      "relation": "依赖",
+      "note": "jsonl 每行记录一个 chunk 的元信息"
+    },
+    {
+      "from": "concept.jsonl_persist",
+      "to": "param.vector_dim",
+      "relation": "依赖",
+      "note": "jsonl 中记 vector_dim 作为占位"
+    },
+    {
+      "from": "concept.idempotent_pk",
+      "to": "concept.primary_key",
+      "relation": "依赖",
+      "note": "复用主键概念：拼接 bookId / chapterNum / chunkIndex"
+    },
+    {
+      "from": "concept.idempotent_pk",
+      "to": "step.upsert",
+      "relation": "对照",
+      "note": "重跑不产生重复记录，同主键被覆盖（效果接近 upsert）"
+    },
+    {
+      "from": "concept.per_chapter_resilience",
+      "to": "step.streaming_insert",
+      "relation": "依赖",
+      "note": "per_chapter_resilience 是 streaming_insert 步骤的容错机制"
+    },
+    {
+      "from": "concept.ebook_rag",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.ebook_rag_collection",
+      "relation": "依赖",
+      "note": "在 ebook_collection 上做 RAG 闭环"
+    },
+    {
+      "from": "concept.ebook_rag",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.output_fields",
+      "relation": "依赖",
+      "note": "search 时用 output_fields 投影回 5 个业务字段"
+    },
+    {
+      "from": "concept.ebook_rag",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.fail_safe",
+      "relation": "依赖",
+      "note": "问答全程双层 try/catch 兜底"
+    },
+    {
+      "from": "concept.ebook_rag",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.three_kingdoms",
+      "relation": "依赖",
+      "note": "领域语料是《三国演义》"
+    },
+    {
+      "from": "concept.ebook_rag",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.rag",
+      "relation": "扩展",
+      "note": "长文档场景下的 RAG 闭环实例"
+    },
+    {
+      "from": "concept.output_fields",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.search",
+      "relation": "依赖",
+      "note": "search() 的可选入参"
+    },
+    {
+      "from": "concept.output_fields",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.ebook_rag_collection",
+      "relation": "依赖",
+      "note": "投影字段来自 ebook_collection schema"
+    },
+    {
+      "from": "concept.fail_safe",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.connect_load_safe",
+      "relation": "依赖",
+      "note": "connect 失败由 main() 顶层 catch 兜底"
+    },
+    {
+      "from": "concept.fail_safe",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.degrade_fallback",
+      "relation": "依赖",
+      "note": "fail_safe 的实现 = degrade_fallback"
+    },
+    {
+      "from": "step.connect_load_safe",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.connect",
+      "relation": "依赖",
+      "note": "调用 client.connectPromise"
+    },
+    {
+      "from": "step.connect_load_safe",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.load_collection",
+      "relation": "依赖",
+      "note": "调用 client.loadCollection"
+    },
+    {
+      "from": "step.connect_load_safe",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.zilliz_serverless",
+      "relation": "依赖",
+      "note": "Serverless 实际无需 load，但脚本做了容错兼容"
+    },
+    {
+      "from": "step.augment_ebook_context",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.search",
+      "relation": "前置",
+      "note": "用 search 命中拼上下文"
+    },
+    {
+      "from": "step.augment_ebook_prompt",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.augment_ebook_context",
+      "relation": "前置",
+      "note": "prompt 模板需要 context 字符串"
+    },
+    {
+      "from": "step.generate_ebook_answer",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.augment_ebook_prompt",
+      "relation": "前置",
+      "note": "把 prompt 丢给 LLM"
+    },
+    {
+      "from": "step.generate_ebook_answer",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.generate",
+      "relation": "扩展",
+      "note": "对应到通用 RAG 的 generate 步"
+    },
+    {
+      "from": "step.degrade_fallback",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.search",
+      "relation": "对照",
+      "note": "search 失败时走降级而非重试"
+    },
+    {
+      "from": "concept.three_kingdoms",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "concept.ebook_rag_collection",
+      "relation": "依赖",
+      "note": "灬库时写入的 book_id 对应三国演义"
+    },
+    {
+      "from": "concept.three_kingdoms",
+      "impl_file": "src/ebook-render-rag-remote.mjs",
+      "to": "step.augment_ebook_prompt",
+      "relation": "依赖",
+      "note": "prompt 中明确《三国演义》领域"
+    }
   ]
 }
