@@ -78,6 +78,7 @@ async function inMemoryDemo() {
   // 第 0 步：创建 history 实例（进程内存）
   // 这一步相当于在内存里开一个空数组，后续所有 addMessage 都会追加到这里
   const history = new InMemoryChatMessageHistory();
+  // @graph: step.init_history
 
   // 第 0 步：构造系统级角色设定（SystemMessage）
   // SystemMessage 不写入 history，而是每轮临时拼在 messages 数组最前面
@@ -85,6 +86,7 @@ async function inMemoryDemo() {
   const systemMessage = new SystemMessage(
     "你是一个友好、幽默的做菜助手，喜欢分享美食和烹饪技巧。",
   );
+  // @graph: step.build_system
 
   // ===========================================================================
   // 第一轮对话：用户问“你今天吃的什么？”
@@ -93,6 +95,7 @@ async function inMemoryDemo() {
 
   // 步骤 1：构造 HumanMessage（用户输入）
   const userMessage1 = new HumanMessage("你今天吃的什么？");
+  // @graph: step.add_human
 
   // 步骤 2：把用户消息写入 history
   // history 内部数组从空变为 [HumanMessage]
@@ -102,15 +105,18 @@ async function inMemoryDemo() {
   // [systemMessage, ...(await history.getMessages())]
   // 当前 getMessages() 返回 [HumanMessage1]，所以 messages = [SystemMessage, HumanMessage1]，长度 = 2
   const messages1 = [systemMessage, ...(await history.getMessages())];
+  // @graph: step.compose_messages
 
   // 步骤 4：调用模型
   // model.invoke 接收消息数组，返回一个 AIMessage
   const response1 = await model.invoke(messages1);
+  // @graph: step.invoke_model
 
   // 步骤 5：把模型的回复写回 history
   // 这是“记忆”最关键的一步：少了它，下一轮模型就不知道前面说过什么
   // history 内部数组变为 [HumanMessage1, AIMessage1]
   await history.addMessage(response1);
+    // @graph: step.add_ai
 
   // 打印本轮对话（人眼观测）
   console.log(`用户: ${userMessage1.content}`);

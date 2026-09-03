@@ -221,7 +221,7 @@
       "category": "step",
       "summary": "new InMemoryChatMessageHistory() 拿到一个进程内的空历史（src/history-test.mjs）。src/history-test2.mjs 用的是 FileSystemChatMessageHistory，构造时必须传 filePath + sessionId 两项，构造完即会从磁盘加载已有消息。多用户场景下通常在工厂函数里按 session_id 创建。",
       "impl_file": "src/history-test.mjs",
-      "impl_lines": "81-88",
+      "impl_lines": "16",
       "api": "const history = new InMemoryChatMessageHistory(); // 内存版\nconst history = new FileSystemChatMessageHistory({ filePath, sessionId }); // 文件版"
     },
     {
@@ -230,7 +230,7 @@
       "category": "step",
       "summary": "new SystemMessage('…') 构造一个角色设定对象。该对象不会被写入 history，而是每轮临时拼到 messages 头部。",
       "impl_file": "src/history-test.mjs",
-      "impl_lines": "89-97",
+      "impl_lines": "18-20",
       "api": "const systemMessage = new SystemMessage('…');"
     },
     {
@@ -239,7 +239,7 @@
       "category": "step",
       "summary": "把用户输入写入 history。getMessages() 之后就能看到它。每轮对话的第一步。",
       "impl_file": "src/history-test.mjs",
-      "impl_lines": "98-107",
+      "impl_lines": "24-25, 36-37",
       "api": "const userMessage = new HumanMessage(text); await history.addMessage(userMessage);"
     },
     {
@@ -248,7 +248,7 @@
       "category": "step",
       "summary": "把 systemMessage 放最前面，剩余的展开自 history.getMessages()。这是“上下文传递”的具体动作，决定了模型能看到哪些消息。",
       "impl_file": "src/history-test.mjs",
-      "impl_lines": "108-112",
+      "impl_lines": "27, 39",
       "api": "const messages = [systemMessage, ...(await history.getMessages())];"
     },
     {
@@ -257,7 +257,7 @@
       "category": "step",
       "summary": "把 messages 数组丢给模型，返回一个 AIMessage。这一步是“生成”，没有持久化动作。",
       "impl_file": "src/history-test.mjs",
-      "impl_lines": "113-118",
+      "impl_lines": "28, 40",
       "api": "const response = await model.invoke(messages);"
     },
     {
@@ -266,7 +266,7 @@
       "category": "step",
       "summary": "把模型回复写回 history。这是“记忆”最关键的一步：少了它，下一轮模型就不知道前面说过什么。",
       "impl_file": "src/history-test.mjs",
-      "impl_lines": "119-222",
+      "impl_lines": "29, 41",
       "api": "await history.addMessage(response);"
     },
     {
@@ -293,7 +293,7 @@
       "category": "step",
       "summary": "用 path.join(process.cwd(), 'chat_history.json') 拼出绝对路径。FileSystemChatMessageHistory 要求 filePath 是绝对路径或相对进程 cwd 的路径；用 process.cwd() 而不是 __dirname，是因为 ESM 下 __dirname 不可用。",
       "impl_file": "src/history-test2.mjs",
-      "impl_lines": "99-111",
+      "impl_lines": "5, 18",
       "api": "const filePath = path.join(process.cwd(), 'chat_history.json');"
     },
     {
@@ -302,7 +302,7 @@
       "category": "step",
       "summary": "用常量 sessionId='user_session_001' 作为本次会话的唯一标识。生产环境应替换为从请求上下文/JWT/cookie 里拿到的真实用户标识。注意：FileSystemChatMessageHistory 的 sessionId 一旦绑定，整个生命周期都只能读/写该 session 的消息；切换用户需要 new 一个新实例。",
       "impl_file": "src/history-test2.mjs",
-      "impl_lines": "112-150",
+      "impl_lines": "19",
       "api": "const sessionId = 'user_session_001';"
     },
     {
@@ -311,7 +311,7 @@
       "category": "step",
       "summary": "new FileSystemChatMessageHistory({ filePath, sessionId })：构造时立即读磁盘文件并解析出属于该 sessionId 的消息数组；如果文件不存在则为空数组。这是与 InMemoryChatMessageHistory 最大的区别——构造后不是空数组，而是磁盘上的当前状态。",
       "impl_file": "src/history-test2.mjs",
-      "impl_lines": "151-313",
+      "impl_lines": "27-30",
       "api": "const history = new FileSystemChatMessageHistory({ filePath, sessionId });"
     },
     {
