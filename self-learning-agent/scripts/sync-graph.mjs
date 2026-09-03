@@ -276,7 +276,7 @@ function printDiff(seedGraph, diff, project) {
   );
 
   // 零锚点降级提示：源码里还没加任何 // @graph: 锚点，避免孤儿列表刷屏吓到用户
-  if (anchors.length === 0) {
+  if (anchorsCount === 0) {
     console.log(
       `${C.yellow}${E.warn}${C.reset} 未在 ${C.bold}src/*.mjs${C.reset} 里发现任何 ${C.cyan}// @graph: <id>${C.reset} 锚点。`
     );
