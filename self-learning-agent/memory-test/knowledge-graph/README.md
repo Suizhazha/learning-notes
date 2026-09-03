@@ -1,6 +1,11 @@
 # memory-test 知识图谱
 
-存放本项目学习过程中沉淀的 **LangChain InMemoryChatMessageHistory 知识图谱**。当前锚点章节是 `src/history-test.mjs`（两轮多轮对话：手动管理 SystemMessage + HumanMessage + AIMessage 历史），整套图谱覆盖 LangChain 内存记忆的核心概念、消息类型、对话轮次处理、上下文传递机制以及设计模式（手动管理 vs RunnableWithMessageHistory 自动管理）。
+存放本项目学习过程中沉淀的 **LangChain ChatMessageHistory 知识图谱**。当前锚点章节有两个：
+
+- `src/history-test.mjs` —— 两轮多轮对话，手动管理 `SystemMessage + HumanMessage + AIMessage` 历史，使用 `InMemoryChatMessageHistory`（内存版）
+- `src/history-test2.mjs` —— 同上，但改用 `FileSystemChatMessageHistory`（文件系统持久化版），把消息以 JSON 形式写入本地文件，支持 `sessionId` 多会话
+
+整套图谱覆盖 LangChain 单会话记忆的核心概念、消息类型、对话轮次处理、上下文传递机制、持久化 vs 内存版对比、sessionId 多会话、以及设计模式（手动管理 vs `RunnableWithMessageHistory` 自动管理）。
 
 ## 文件清单
 
@@ -103,16 +108,35 @@
 ## 当前覆盖范围（截至本次更新）
 
 - **已落地的代码脚本**：
-  - `src/history-test.mjs`：两轮多轮对话；手动管理 SystemMessage + HumanMessage + AIMessage；演示 InMemoryChatMessageHistory 累积
-- **对话步骤（5 步法）**：init_model / init_history / build_system → add_human → compose_messages → invoke_model → add_ai → print_round → print_history
-- **概念**：ChatMessageHistory / InMemoryChatMessageHistory / BaseMessage / HumanMessage / AIMessage / SystemMessage / Turn / ContextPassing / LLM / ModelInvoke / Lifecycle / ApiMethods / DesignPatternManual / DesignPatternAuto / SystemMessageStrategy / WindowBuffer / TokenGrowth / ComparisonPersistent
-- **参数**：MODEL_NAME / OPENAI_API_KEY / OPENAI_BASE_URL / temperature
+  - `src/history-test.mjs`：两轮多轮对话；手动管理 `SystemMessage + HumanMessage + AIMessage`；演示 `InMemoryChatMessageHistory` 累积，进程退出即丢
+  - `src/history-test2.mjs`：两轮多轮对话；同上但用 `FileSystemChatMessageHistory` 持久化到 `chat_history.json`；`sessionId = 'user_session_001'`；每轮结束打印 `✓ 对话已保存到文件`；可 `cat chat_history.json` 直接看到 JSON
+- **对话步骤（5 步法）**：`init_model` / `init_history` / `build_system` → `add_human` → `compose_messages` → `invoke_model` → `add_ai` → `print_round` → `print_history`
+- **持久化版特有步骤**：`resolve_filepath`（拼 filePath）→ `bind_session`（绑 sessionId）→ `open_history_persistent`（new FileSystemChatMessageHistory）→ 5 步法 → `print_persist_notice`（打印"已保存"）
+- **概念**：
+  - 通用：`ChatMessageHistory`（接口）/ `BaseMessage` / `HumanMessage` / `AIMessage` / `SystemMessage` / `Turn` / `ContextPassing` / `LLM` / `ModelInvoke` / `Lifecycle` / `ApiMethods` / `DesignPatternManual` / `DesignPatternAuto` / `SystemMessageStrategy` / `WindowBuffer` / `TokenGrowth` / `ComparisonPersistent`
+  - 持久化专用：`FileSystemChatMessageHistory` / `SessionId` / `Persistence` / `MultiSession`
+- **参数**：`MODEL_NAME` / `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `temperature` / `FILE_PATH` / `SESSION_ID`
 
 ## 设计模式速查
 
 | 模式 | 适用场景 | 关键 API | 记忆存储 | 备注 |
 |------|---------|---------|---------|------|
-| **手动管理**（本项目） | 单用户 demo / 单元测试 / 学习 | `history.addMessage / getMessages` | InMemoryChatMessageHistory | 显式 5 步，代码透明 |
-| **RunnableWithMessageHistory 自动管理** | 多用户生产环境 / Web 后端 | `new RunnableWithMessageHistory({ runnable, getMessageHistory })` | InMemoryChatMessageHistory / Redis / SQLite / Postgres / Upstash | 按 session_id 自动读写；最常用 |
+| **手动管理 + InMemory**（`history-test.mjs`） | 单用户 demo / 单元测试 / 学习 | `history.addMessage / getMessages` | `InMemoryChatMessageHistory` | 显式 5 步；进程退出即丢 |
+| **手动管理 + FileSystem**（`history-test2.mjs`） | 单用户 demo / 单机持久化 / 学习持久化 | `history.addMessage / getMessages` | `FileSystemChatMessageHistory({ filePath, sessionId })` | 显式 5 步 + resolve_filepath + bind_session + print_persist_notice；进程重启仍存活；cat 存储文件可观测 |
+| **RunnableWithMessageHistory 自动管理** | 多用户生产环境 / Web 后端 | `new RunnableWithMessageHistory({ runnable, getMessageHistory })` | InMemory / FileSystem / Redis / SQLite / Postgres / Upstash | 按 `session_id` 自动读写；最常用 |
 
-如需扩到更多内容（例如 `trim_messages` 截断窗口 / ConversationSummaryBufferMemory 摘要式记忆 / Agent 多轮工具调用记忆 / RunnableWithMessageHistory + Redis 持久化示例），按上述流程补充节点即可。
+## 持久化版 vs 内存版（要点速查）
+
+| 维度 | InMemoryChatMessageHistory | FileSystemChatMessageHistory |
+|------|---------------------------|------------------------------|
+| 引入位置 | `@langchain/core/runnables` 自带 | `@langchain/community/stores/message/file_system` |
+| 构造 | `new InMemoryChatMessageHistory()` | `new FileSystemChatMessageHistory({ filePath, sessionId })` |
+| 多会话 | ❌ 一个实例 = 一个会话 | ✅ 同文件可挂多 sessionId |
+| 持久化 | ❌ 进程退出即丢 | ✅ 写入本地 JSON |
+| 并发写 | 安全（内存数组） | ❌ 不安全（多写会丢消息）；生产请换 SQLite/Redis |
+| 跨进程 | ❌ | ✅（共享文件/NFS） |
+| 横向扩展 | ❌ | ❌（生产请换 Redis/Postgres） |
+| 观测 | 无 | `cat chat_history.json` 直接看 |
+| 适用阶段 | 学习 / 单元测试 | 单机持久化 demo / 中小项目起步 |
+
+如需扩到更多内容（例如 `trim_messages` 截断窗口 / `ConversationSummaryBufferMemory` 摘要式记忆 / Agent 多轮工具调用记忆 / `RunnableWithMessageHistory` + Redis 持久化示例），按上述流程补充节点即可。

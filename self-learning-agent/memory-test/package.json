@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "history": "node src/history-test.mjs",
-    "history:debug": "node --inspect src/history-test.mjs"
+    "history:fs": "node src/history-test2.mjs",
+    "history:debug": "node --inspect src/history-test.mjs",
+    "history:fs:debug": "node --inspect src/history-test2.mjs"
   },
   "keywords": [],
   "author": "",
