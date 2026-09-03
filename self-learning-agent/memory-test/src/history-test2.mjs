@@ -96,6 +96,7 @@ async function fileHistoryDemo() {
   // ESM 下 __dirname 不可用；process.cwd() 是等价的兜底写法。
   // 路径 = <运行 node 命令时所在目录>/chat_history.json
   const filePath = path.join(process.cwd(), "chat_history.json");
+  // @graph: step.resolve_filepath
 
   // ---------- 持久化扩展步骤 2：绑定 sessionId (step.bind_session) ----------
   // sessionId = 会话的唯一标识，是持久化 history 的"分区键"。
@@ -108,6 +109,7 @@ async function fileHistoryDemo() {
   //   - JWT 中的 sub 字段
   //   - WebSocket 连接 ID
   const sessionId = "user_session_001";
+  // @graph: step.bind_session
 
   // ---------- 与 history-test.mjs 一致：构造 SystemMessage ----------
   // SystemMessage 不写入 history，每轮 invoke 时临时拼到 messages 数组最前面。
@@ -146,6 +148,7 @@ async function fileHistoryDemo() {
     filePath: filePath,  // 必填：JSON 文件的存储路径
     sessionId: sessionId, // 必填：会话标识，作为"分区键"
   });
+  // @graph: step.open_history_persistent
 
   // ---------- 5 步法 第 1 步：构造并 addMessage HumanMessage ----------
   // 用户的输入："红烧肉怎么做"
