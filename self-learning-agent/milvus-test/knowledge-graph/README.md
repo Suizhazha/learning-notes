@@ -110,15 +110,15 @@
   - `src/rag.mjs`：完整 retrieve → augment → generate 闭环
   - `src/update.mjs`：upsert（主键覆盖即“更新”）
   - `src/delete.mjs`：三种姿势：按主键 / 批量 in [...] / filter 表达式
-  - `src/ebook-write.mjs`：EPUB 按章节 → 二次拆分 chunk → 流式灌库
-- **C（Create）**: connect / create_collection / create_index / load_collection / insert / upsert
+  - `src/ebook-write.mjs`：EPUB 按章节 → 二次拆分 chunk → 流式灌库；validateEnv() 启动校验；AUTOINDEX；jsonl 落盘到 ./data/
+- **C（Create）**: validate_env / connect / create_collection / create_index / load_collection / insert / upsert
 - **R（Read）**: query / search / hybrid_search / get
 - **U（Update）**: upsert / alter_collection（暂未单列，归到 upsert 旁注）
 - **D（Delete）**: delete / release_collection / drop_collection
 - **辅助**: flush / create_partition / create_alias
 - **RAG 闭环**: retrieve / augment / generate
-- **长文档预处理**: load_epub / split_text / streaming_insert
-- **概念**: Collection / Field / Schema / PrimaryKey / Index / MetricType / Embedding / Filter / Partition / Alias / RAG / Prompt / Context / LLM / EPubLoader / TextSplitter / Chunk / Streaming
-- **参数**: VECTOR_DIM / IVF_FLAT.nlist / CHUNK_SIZE / CHUNK_OVERLAP
+- **长文档预处理**: validate_env / load_epub / split_text / streaming_insert / persist_jsonl
+- **概念**: Collection / Field / Schema / PrimaryKey / Index / MetricType / Embedding / Filter / Partition / Alias / RAG / Prompt / Context / LLM / EPubLoader / TextSplitter / Chunk / Streaming / IdempotentPK / PerChapterResilience / ZillizServerless / AUTOINDEX / JsonlPersist / EnvValidation
+- **参数**: VECTOR_DIM / IVF_FLAT.nlist / CHUNK_SIZE / CHUNK_OVERLAP / MILVUS_ADDRESS / MILVUS_TOKEN / MILVUS_DB_NAME
 
 如需扩到更多内容（例如用户管理 / 角色 RBAC / 多副本 / 跨集群同步、向量召回评估、流式回答 / 多轮对话 / Agent 工具调用），按上述流程补充节点即可。

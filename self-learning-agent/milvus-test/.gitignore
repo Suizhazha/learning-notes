@@ -11,3 +11,7 @@ node_modules/
 
 # Ignore package lock files
 pnpm-lock.yaml
+
+# Ignore chunk 索引落盘产物（jsonl 体积大、可重新生成，不入库）
+# ebook-write.mjs 会写到 ./data/<bookName>__chunks.jsonl
+data/

@@ -4,9 +4,9 @@
 
 ## 对应章节
 - 锚点脚本：`src/insert.mjs`（建表 / 索引 / 灌库）+ `src/query.mjs`（向量检索）+ `src/rag.mjs`（RAG 检索增强生成闭环）+ `src/update.mjs`（upsert 实现“更新”）+ `src/delete.mjs`（三种姿势删除）+ `src/ebook-write.mjs`（EPUB 长文档 → 按章节 → 二次拆分 → 流式灌库）
-- 范围：Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 长文档预处理 + 系统管理
-- 节点总数：44（step: 22 / concept: 18 / param: 4）
-- 边总数：59
+- 范围：Milvus 完整 CRUD（C/R/U/D）+ 集合管理 + 索引 + 检索 + RAG 闭环 + 长文档预处理 + 系统管理 + **Zilliz Cloud Serverless 改造 + jsonl 落盘**
+- 节点总数：55（step: 24 / concept: 24 / param: 7）
+- 边总数：79
 
 ## 流程图（CRUD 全景）
 
@@ -87,10 +87,42 @@ flowchart TD
         cTextSplitter["concept.text_splitter<br/>文本拆分器"]
         cChunk["concept.chunk<br/>Chunk 文本片段"]
         cStreaming["concept.streaming<br/>流式处理"]
+        cIdempotent["concept.idempotent_pk<br/>幂等主键"]
+        cPerChapter["concept.per_chapter_resilience<br/>单章容错"]
         sLoadEpub["step.load_epub<br/>加载 EPUB<br/><i>src/ebook-write.mjs</i>"]
         sSplitText["step.split_text<br/>文本拆分<br/><i>src/ebook-write.mjs</i>"]
         sStreamingInsert["step.streaming_insert<br/>流式灌库<br/><i>src/ebook-write.mjs</i>"]
+        sPersistJsonl["step.persist_jsonl<br/>jsonl 落盘"]
     end
+
+    %% ============ Zilliz Cloud Serverless ============
+    subgraph ZILLIZ_SERVERLESS["Zilliz Cloud Serverless 改造"]
+        cZilliz["concept.zilliz_serverless<br/>Zilliz Cloud Serverless"]
+        cAutoindex["concept.autoindex<br/>AUTOINDEX"]
+        cJsonl["concept.jsonl_persist<br/>jsonl 落盘"]
+        cEnvVal["concept.env_validation<br/>启动校验"]
+        pAddress["MILVUS_ADDRESS"]
+        pToken["MILVUS_TOKEN"]
+        pDbName["MILVUS_DB_NAME"]
+        sValidateEnv["step.validate_env<br/>启动校验<br/><i>src/ebook-write.mjs</i>"]
+    end
+
+    %% ---------- 启动校验 ----------
+    sValidateEnv -->|前置| sConnect
+    sValidateEnv -.->|依赖| cEnvVal
+    cEnvVal -->|依赖| pAddress
+    cEnvVal -->|依赖| pToken
+    cEnvVal -->|依赖| pDbName
+
+    %% ---------- Zilliz Cloud Serverless 关联 ----------
+    sConnect -->|依赖| cZilliz
+    cZilliz -->|依赖| pAddress
+    cZilliz -->|依赖| pToken
+    cZilliz -->|依赖| pDbName
+    cZilliz -->|依赖| cAutoindex
+    cAutoindex -->|依赖| index
+    cAutoindex -->|依赖| metric
+    cZilliz -.->|对照| sLoad
 
     %% ---------- Create 链路 ----------
     sConnect -->|前置| sCreateCol
@@ -161,6 +193,13 @@ flowchart TD
     chunkSize -->|依赖| cTextSplitter
     chunkOverlap -->|依赖| cTextSplitter
     chunkSize -->|对照| chunkOverlap
+    cIdempotent -->|依赖| pk
+    cIdempotent -.->|对照| sUpsert
+    cPerChapter -->|依赖| sStreamingInsert
+    sStreamingInsert -->|后置| sPersistJsonl
+    sPersistJsonl -->|依赖| cJsonl
+    cJsonl -->|依赖| cChunk
+    cJsonl -->|依赖| dim
 
     %% ---------- 样式 ----------
     classDef step fill:#dde9ff,stroke:#4a6fa5,color:#1a2b4a;
@@ -168,10 +207,12 @@ flowchart TD
     classDef param fill:#d6f0d6,stroke:#4a8c4a,color:#1a4a1a;
     classDef rag fill:#f7d6e8,stroke:#a83d7a,color:#5a1a3a;
     classDef longdoc fill:#d6e8f0,stroke:#4a7a8c,color:#1a3a4a;
-    class sConnect,sCreateCol,sCreateIdx,sLoad,sInsert,sQuery,sSearch,sHybrid,sGet,sUpsert,sDelete,sRelease,sDrop,sFlush,sCreatePart,sCreateAlias,sRetrieve,sAugment,sGenerate,sLoadEpub,sSplitText,sStreamingInsert step;
-    class collection,field,schema,pk,index,metric,embedding,cFilterExpr,partition,alias,cEpubLoader,cTextSplitter,cChunk,cStreaming concept;
-    class dim,nlist,chunkSize,chunkOverlap param;
+    classDef serverless fill:#f0e0ff,stroke:#7a4a8c,color:#3a1a4a;
+    class sConnect,sCreateCol,sCreateIdx,sLoad,sInsert,sQuery,sSearch,sHybrid,sGet,sUpsert,sDelete,sRelease,sDrop,sFlush,sCreatePart,sCreateAlias,sRetrieve,sAugment,sGenerate,sLoadEpub,sSplitText,sStreamingInsert,sValidateEnv,sPersistJsonl step;
+    class collection,field,schema,pk,index,metric,embedding,cFilterExpr,partition,alias,cEpubLoader,cTextSplitter,cChunk,cStreaming,cIdempotent,cPerChapter,cZilliz,cAutoindex,cJsonl,cEnvVal concept;
+    class dim,nlist,chunkSize,chunkOverlap,pAddress,pToken,pDbName param;
     class cRag,cPrompt,cContext,cLlm rag;
+    class sValidateEnv,sPersistJsonl,pAddress,pToken,pDbName,cZilliz,cAutoindex,cJsonl,cEnvVal serverless;
 ```
 
 ## 类图（集合与字段的组成）
@@ -254,11 +295,22 @@ classDiagram
 | concept.text_splitter | 文本拆分器 | concept | RecursiveCharacterTextSplitter；递归分隔符层级 | `src/ebook-write.mjs:241-247` |
 | concept.chunk | Chunk 文本片段 | concept | 拆分后最小单元 = Milvus 一行；含 book_id/chapter_num/index | `src/ebook-write.mjs:261-282` |
 | concept.streaming | 流式处理 | concept | 边生成边插入，内存友好 + 失败可定位 | `src/ebook-write.mjs:208, 251-280` |
+| concept.idempotent_pk | 幂等主键 | concept | `${bookId}_${chapterNum}_${chunkIndex}`，重跑不重复 | `src/ebook-write.mjs:23, 197-198` |
+| concept.per_chapter_resilience | 单章容错 | concept | 逐章 try/catch + failedChapters 汇总 | `src/ebook-write.mjs:267-280` |
+| concept.zilliz_serverless | Zilliz Cloud Serverless | concept | endpoint + ApiKey token 鉴权；不需 loadCollection | `src/ebook-write.mjs:121-133, 226-235` |
+| concept.autoindex | AUTOINDEX | concept | Serverless 唯一支持的索引类型，params 留空 | `src/ebook-write.mjs:226-235` |
+| concept.jsonl_persist | jsonl 落盘 | concept | 成功插入后写 ./data/<safeBook>__chunks.jsonl | `src/ebook-write.mjs:150-170` |
+| concept.env_validation | 启动校验 | concept | validateEnv() 检查 .env 必需变量 | `src/ebook-write.mjs:82-103` |
 | param.chunk_size | CHUNK_SIZE | param | 单 chunk 目标字符数（500） | `src/ebook-write.mjs:39` |
 | param.chunk_overlap | CHUNK_OVERLAP | param | 相邻 chunk 重叠字符数（50） | `src/ebook-write.mjs:246` |
+| param.milvus_address | MILVUS_ADDRESS | param | Serverless 公共 endpoint | `src/ebook-write.mjs:129-131` |
+| param.milvus_token | MILVUS_TOKEN | param | Zilliz Cloud ApiKey | `src/ebook-write.mjs:129-132` |
+| param.milvus_db_name | MILVUS_DB_NAME | param | Serverless 数据库名（默认 default） | `src/ebook-write.mjs:101-102, 132` |
 | step.load_epub | 加载 EPUB | step | `new EPubLoader(file, { splitChapters: true })` | `src/ebook-write.mjs:211-223` |
 | step.split_text | 文本拆分 | step | `textSplitter.splitText(chapter)` | `src/ebook-write.mjs:241-275` |
 | step.streaming_insert | 流式灌库 | step | 逐章循环：拆 → embed → insert | `src/ebook-write.mjs:249-282` |
+| step.validate_env | 启动校验 | step | `validateEnv()` 检查环境变量 | `src/ebook-write.mjs:82-103, 425-431` |
+| step.persist_jsonl | jsonl 落盘 | step | `await appendJsonl(record)` | `src/ebook-write.mjs:150-170, 295-300` |
 
 ## 边（关系）一览
 
@@ -323,6 +375,26 @@ classDiagram
 | param.chunk_size | 依赖 | concept.text_splitter | chunkSize 控制单 chunk 长度 |
 | param.chunk_overlap | 依赖 | concept.text_splitter | chunkOverlap 控制相邻 chunk 重叠 |
 | param.chunk_size | 对照 | param.chunk_overlap | overlap 通常取 chunkSize 的 10%~20% |
+| step.validate_env | 前置 | step.connect | validateEnv 通过后才能使用 MilvusClient |
+| concept.env_validation | 依赖 | step.validate_env | validate_env 的实现 = validateEnv() |
+| concept.env_validation | 依赖 | param.milvus_address | 校验必含 MILVUS_ADDRESS |
+| concept.env_validation | 依赖 | param.milvus_token | 校验必含 MILVUS_TOKEN |
+| concept.env_validation | 依赖 | param.milvus_db_name | 缺省补齐为 default |
+| step.connect | 依赖 | concept.zilliz_serverless | Serverless 连接传 address + token |
+| concept.zilliz_serverless | 依赖 | param.milvus_address | 地址走公共 endpoint |
+| concept.zilliz_serverless | 依赖 | param.milvus_token | 鉴权走 ApiKey token |
+| concept.zilliz_serverless | 依赖 | param.milvus_db_name | database 参数（默认 default） |
+| concept.zilliz_serverless | 依赖 | concept.autoindex | Serverless 只支持 AUTOINDEX |
+| concept.autoindex | 依赖 | concept.index | AUTOINDEX 是索引的特殊形态 |
+| concept.autoindex | 依赖 | concept.metric | 仍需显式传 metric_type |
+| concept.zilliz_serverless | 对照 | step.load_collection | Serverless 不需要 loadCollection |
+| step.persist_jsonl | 后置 | step.streaming_insert | 流式灌库成功后才调 appendJsonl 落盘 |
+| concept.jsonl_persist | 依赖 | step.persist_jsonl | persist_jsonl 的实现 = appendJsonl() |
+| concept.jsonl_persist | 依赖 | concept.chunk | jsonl 每行记录一个 chunk |
+| concept.jsonl_persist | 依赖 | param.vector_dim | jsonl 中记 vector_dim 作为占位 |
+| concept.idempotent_pk | 依赖 | concept.primary_key | 复用主键概念，三段拼接 |
+| concept.idempotent_pk | 对照 | step.upsert | 重跑不产生重复（同主键覆盖） |
+| concept.per_chapter_resilience | 依赖 | step.streaming_insert | 单章容错是流式灌库的容错机制 |
 
 ## 维护说明
 详见 [`README.md`](./README.md)。修改任何节点 / 边时请先改 `graph.json`，再同步本文件中的 Mermaid 块与说明表。
