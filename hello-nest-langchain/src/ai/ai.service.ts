@@ -16,10 +16,12 @@ export class AiService {
     const prompt = PromptTemplate.fromTemplate('请回答以下问题： \n\n{query}');
     const model = new ChatOpenAI({
       temperature: 0.7,
-      modelName: process.env.MODEL_NAME,
-      apiKey: process.env.API_KEY,
+      // 1.x 版本中 modelName 已更名为 model
+      model: process.env.MODEL_NAME!,
+      apiKey: process.env.OPENAI_API_KEY,
+      // OpenAI SDK 的字段是 baseURL(大写 L),不是 baseUrl
       configuration: {
-        baseUrl: process.env.BASE_URL,
+        baseURL: process.env.OPENAI_BASE_URL,
       },
     });
 
