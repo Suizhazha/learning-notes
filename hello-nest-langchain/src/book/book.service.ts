@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { CreateBookDto } from './dto/create-book.dto.js';
 import { UpdateBookDto } from './dto/update-book.dto.js';
 
@@ -8,8 +8,11 @@ export class BookService {
     return 'This action adds a new book';
   }
 
+  @Inject('BOOK_REPOSITORY')
+  private readonly bookRepository: any;
   findAll() {
-    return `This action returns all book`;
+    // return `This action returns all book`;
+    return this.bookRepository.findAll();
   }
 
   findOne(id: number) {
