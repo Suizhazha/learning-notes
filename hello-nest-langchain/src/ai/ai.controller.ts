@@ -7,7 +7,9 @@ import {
   Param,
   Delete,
   Query,
+  Sse,
 } from '@nestjs/common';
+import { from, map, type Observable } from 'rxjs';
 import { AiService } from './ai.service.js';
 import { CreateAiDto } from './dto/create-ai.dto.js';
 import { UpdateAiDto } from './dto/update-ai.dto.js';
@@ -20,6 +22,13 @@ export class AiController {
   async chat(@Query('query') query: string) {
     const answer = await this.aiService.runchain(query);
     return { answer };
+  }
+
+  @Sse('chat/stream')
+  chatStream(@Query('query') query: string): Observable<{ data: string }> {
+    return from(this.aiService.runchainStream(query)).pipe(
+      map((chunk) => ({ data: chunk })),
+    );
   }
 
   @Post()
