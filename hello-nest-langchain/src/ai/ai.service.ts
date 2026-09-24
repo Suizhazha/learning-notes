@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import { Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import type { Runnable } from '@langchain/core/runnables';
 import { PromptTemplate } from '@langchain/core/prompts';
@@ -13,20 +12,20 @@ import { UpdateAiDto } from './dto/update-ai.dto.js';
 export class AiService {
   private readonly chain: Runnable;
 
-  constructor(@Inject(ConfigService) config: ConfigService) {
+  constructor(@Inject('CHAT_SERVICE') chatService: ChatOpenAI) {
     const prompt = PromptTemplate.fromTemplate('请回答以下问题： \n\n{query}');
-    const model = new ChatOpenAI({
-      temperature: 0.7,
-      // 1.x 版本中 modelName 已更名为 model
-      model: config.get('MODEL_NAME')!,
-      apiKey: config.get('OPENAI_API_KEY'),
-      // OpenAI SDK 的字段是 baseURL(大写 L),不是 baseUrl
-      configuration: {
-        baseURL: config.get('OPENAI_BASE_URL'),
-      },
-    });
+    // const model = new ChatOpenAI({
+    //   temperature: 0.7,
+    //   // 1.x 版本中 modelName 已更名为 model
+    //   model: config.get('MODEL_NAME')!,
+    //   apiKey: config.get('OPENAI_API_KEY'),
+    //   // OpenAI SDK 的字段是 baseURL(大写 L),不是 baseUrl
+    //   configuration: {
+    //     baseURL: config.get('OPENAI_BASE_URL'),
+    //   },
+    // });
 
-    this.chain = prompt.pipe(model).pipe(new StringOutputParser());
+    this.chain = prompt.pipe(chatService).pipe(new StringOutputParser());
   }
 
   async runchain(query: string): Promise<string> {
